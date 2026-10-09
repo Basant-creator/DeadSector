@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
-import { Player } from '../entities/Player';
+import { Bullet } from '../combat/Bullet';
+import { Pistol } from '../combat/Pistol';
+import { MUZZLE_OFFSET, Player, PLAYER_MAX_HP } from '../entities/Player';
+import { Walker } from '../entities/Walker';
+import { GAME_HEIGHT, GAME_WIDTH } from '../config';
 
 const ARENA_WIDTH = 2400;
 const ARENA_HEIGHT = 1600;
@@ -43,11 +47,16 @@ const OBSTACLES: readonly Block[] = [
   [2120, 1368, 48, 48],
 ];
 
-/** Movement test arena: static walls and obstacles, a player, and a following camera. No combat. */
+/** Where the one Walker starts: clear of every obstacle, with an open line to the player's spawn. */
+const WALKER_SPAWN = { x: 500, y: 1400 } as const;
+
+/** Test arena: static walls and obstacles, a player with a pistol, one Walker, a following camera. */
 export class ArenaScene extends Phaser.Scene {
   private player!: Player;
+  private pistol!: Pistol;
+  private walkers!: Phaser.GameObjects.Group;
   private debugText!: Phaser.GameObjects.Text;
-  private lastSpeed = -1;
+  private lastHud = '';
 
   constructor() {
     super('ArenaScene');
@@ -70,6 +79,16 @@ export class ArenaScene extends Phaser.Scene {
     this.player = new Player(this, ARENA_WIDTH / 2, ARENA_HEIGHT / 2);
     this.physics.add.collider(this.player, walls);
 
+    this.pistol = new Pistol(this);
+    // A plain group: colliders read its live members, and a destroyed Walker leaves it by itself.
+    this.walkers = this.add.group();
+    this.walkers.add(new Walker(this, WALKER_SPAWN.x, WALKER_SPAWN.y));
+
+    this.physics.add.collider(this.walkers, walls);
+    this.physics.add.collider(this.pistol.bullets, walls, (bullet) => (bullet as Bullet).kill());
+    this.physics.add.overlap(this.pistol.bullets, this.walkers, (a, b) => this.onBulletHitsWalker(a, b));
+    this.physics.add.overlap(this.player, this.walkers, (a, b) => this.onWalkerTouchesPlayer(a, b));
+
     const camera = this.cameras.main;
     camera.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
     // roundPixels must stay off: Phaser floors the scroll after lerping, which swallows the final
@@ -83,14 +102,59 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   update(): void {
-    this.player.update();
+    const now = this.time.now;
+    this.player.update(now);
 
-    // Only re-render the text when the value changes.
-    const speed = Math.round(this.player.speed);
-    if (speed !== this.lastSpeed) {
-      this.lastSpeed = speed;
-      this.debugText.setText(`WASD move | mouse aim\nspeed ${speed} px/s`);
+    if (!this.player.isDead) {
+      if (this.input.activePointer.leftButtonDown()) {
+        const angle = this.player.aimAngle;
+        this.pistol.tryFire(now,
+          this.player.x + Math.cos(angle) * MUZZLE_OFFSET,
+          this.player.y + Math.sin(angle) * MUZZLE_OFFSET,
+          angle);
+      }
+      for (const walker of this.walkers.getChildren() as Walker[]) walker.pursue(this.player);
     }
+
+    // Only re-render the text when it changes.
+    const hud = `WASD move | mouse aim | LMB fire\nHP ${this.player.health}/${PLAYER_MAX_HP}  ` +
+      `speed ${Math.round(this.player.speed)} px/s`;
+    if (hud !== this.lastHud) {
+      this.lastHud = hud;
+      this.debugText.setText(hud);
+    }
+  }
+
+  private onBulletHitsWalker(a: unknown, b: unknown): void {
+    const bullet = (a instanceof Bullet ? a : b) as Bullet;
+    const walker = (a instanceof Walker ? a : b) as Walker;
+    // A bullet is spent by its first hit: disabling it here stops it reaching anything else.
+    if (!bullet.active || walker.isDead) return;
+    bullet.kill();
+    walker.takeDamage(this.pistol.config.damage);
+  }
+
+  private onWalkerTouchesPlayer(a: unknown, b: unknown): void {
+    const walker = (a instanceof Walker ? a : b) as Walker;
+    if (walker.isDead) return;
+    // Fires every step the two overlap; the player's invulnerability window turns that into
+    // one hit per touch.
+    if (!this.player.takeDamage(walker.contactDamage, this.time.now)) return;
+    this.cameras.main.shake(120, 0.006);
+    if (this.player.isDead) this.onPlayerDeath();
+  }
+
+  private onPlayerDeath(): void {
+    for (const walker of this.walkers.getChildren() as Walker[]) walker.halt();
+    this.add
+      // Above centre: the camera keeps the player in the middle of the screen.
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 140, 'YOU DIED\npress R to restart', {
+        fontFamily: 'monospace', fontSize: '40px', color: '#c8d6c0', align: 'center',
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20);
+    this.input.keyboard?.once('keydown-R', () => this.scene.restart());
   }
 
   private addBlock([x, y, width, height]: Block, color: number): Phaser.GameObjects.Rectangle {

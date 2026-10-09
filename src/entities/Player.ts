@@ -2,10 +2,21 @@ import Phaser from 'phaser';
 
 /** Movement speed in px/s. Diagonals are normalized, so this holds in all eight directions. */
 export const PLAYER_SPEED = 180;
+export const PLAYER_MAX_HP = 100;
+/**
+ * After taking damage the player cannot be damaged again for this long. Contact damage is
+ * checked every physics step while bodies overlap; without this window a touch would land
+ * 60 hits a second.
+ */
+export const PLAYER_INVULNERABLE_MS = 800;
+/** Distance from the player's centre to the barrel tip, where shots start. */
+export const MUZZLE_OFFSET = 24;
 
 const TEXTURE_KEY = 'player';
 const TEXTURE_SIZE = 48;
 const BODY_RADIUS = 14;
+const HIT_FLASH_MS = 90;
+const BLINK_PERIOD_MS = 80;
 
 type MoveKeys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 
@@ -14,6 +25,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private readonly keys: MoveKeys;
   private readonly moveDir = new Phaser.Math.Vector2();
   private readonly aimPoint = new Phaser.Math.Vector2();
+  private hp = PLAYER_MAX_HP;
+  private invulnerableUntil = 0;
+  private dead = false;
 
   /** Draws the placeholder texture: a circle with a barrel pointing along +x (rotation 0). */
   static createTexture(scene: Phaser.Scene): void {
@@ -36,6 +50,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const offset = TEXTURE_SIZE / 2 - BODY_RADIUS;
     this.setCircle(BODY_RADIUS, offset, offset);
     this.setCollideWorldBounds(true);
+    // Above enemies and bullets, so its hit flash and blink stay visible in contact.
+    this.setDepth(3);
 
     const keyboard = scene.input.keyboard;
     if (!keyboard) {
@@ -55,9 +71,52 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.body?.velocity.length() ?? 0;
   }
 
-  update(): void {
+  get health(): number {
+    return this.hp;
+  }
+
+  get isDead(): boolean {
+    return this.dead;
+  }
+
+  /** Direction the player is aiming, in radians: the sprite always faces the cursor. */
+  get aimAngle(): number {
+    return this.rotation;
+  }
+
+  /**
+   * Apply *amount* damage unless the player is dead or still invulnerable from the last hit.
+   * Returns whether it landed, so the caller can add feedback for real hits only.
+   */
+  takeDamage(amount: number, now: number): boolean {
+    if (this.dead || now < this.invulnerableUntil) return false;
+    this.hp = Math.max(0, this.hp - amount);
+    this.invulnerableUntil = now + PLAYER_INVULNERABLE_MS;
+    if (this.hp === 0) {
+      this.die();
+      return true;
+    }
+    this.setTintFill(0xff5544);
+    this.scene.time.delayedCall(HIT_FLASH_MS, () => {
+      if (this.scene && !this.dead) this.clearTint();
+    });
+    return true;
+  }
+
+  update(now: number): void {
+    if (this.dead) return;
     this.updateMovement();
     this.updateAim();
+    // Blink while invulnerable, so the window after a hit is visible.
+    const blinking = now < this.invulnerableUntil && Math.floor(now / BLINK_PERIOD_MS) % 2 === 0;
+    this.setAlpha(blinking ? 0.35 : 1);
+  }
+
+  private die(): void {
+    this.dead = true;
+    this.setVelocity(0, 0);
+    this.setAlpha(1);
+    this.setTint(0x4a4a4a);
   }
 
   private updateMovement(): void {
