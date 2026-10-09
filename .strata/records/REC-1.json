@@ -33,13 +33,13 @@
       "type": "test_run",
       "reference": "headless E2E with puppeteer",
       "description": "camera offset was 9.0 px on both axes with roundPixels on and 0.0 px after the fix",
-      "confidence": "VERIFIED"
+      "confidence": "DECLARED"
     },
     {
       "type": "git_commit",
       "reference": "220094a",
       "description": "the fix landed in this commit",
-      "confidence": "VERIFIED"
+      "confidence": "DECLARED"
     }
   ],
   "constraints": [
@@ -61,5 +61,5 @@
     "summary": "Camera centres to 0.0 px offset and clamps at the arena corners"
   },
   "createdAt": 1791540894629,
-  "updatedAt": 1791540894629
+  "updatedAt": 1791541664055
 }

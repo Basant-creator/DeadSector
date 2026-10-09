@@ -25,7 +25,7 @@
       "type": "test_run",
       "reference": "headless E2E with puppeteer",
       "description": "player reached both outer walls at x 46 and x 2354",
-      "confidence": "VERIFIED"
+      "confidence": "DECLARED"
     },
     {
       "type": "git_commit",
@@ -52,5 +52,5 @@
     "status": "success"
   },
   "createdAt": 1791540896774,
-  "updatedAt": 1791540896774
+  "updatedAt": 1791541664055
 }

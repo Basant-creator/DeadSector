@@ -25,7 +25,7 @@
       "type": "test_run",
       "reference": "headless E2E with puppeteer",
       "description": "speed was 180.00 in all eight directions and 127.28 per axis on diagonals",
-      "confidence": "VERIFIED"
+      "confidence": "DECLARED"
     },
     {
       "type": "git_commit",
@@ -53,5 +53,5 @@
     "status": "success"
   },
   "createdAt": 1791540896081,
-  "updatedAt": 1791540896081
+  "updatedAt": 1791541664055
 }
