@@ -2,10 +2,11 @@ import Phaser from 'phaser';
 import type { Point } from '../waves/WaveDirector';
 import {
   ALLEYS, GATE_RECT, LOTS, MAP_COLS, MAP_ROWS, PLAYER_SPAWN, type SolidKind, SOLIDS, TILE,
-  type TileRect, tileRectToWorld, WORLD_WIDTH, WORLD_HEIGHT,
+  type TileRect, tileRectToWorld, WEAPON_LOCKERS, WORLD_WIDTH, WORLD_HEIGHT,
 } from './cityMap';
 import { Gate } from './Gate';
 import { NavGrid } from './NavGrid';
+import { WeaponLocker } from './WeaponLocker';
 
 const SOLID_STYLE: Record<SolidKind, { fill: number; stroke: number }> = {
   wall: { fill: 0x4a3a32, stroke: 0x6a5242 },
@@ -17,14 +18,15 @@ const SOLID_STYLE: Record<SolidKind, { fill: number; stroke: number }> = {
 
 /**
  * Builds the city from `cityMap` into a scene: ground, solid geometry in one static group,
- * the alley gate, and a navigation grid that mirrors the solids. Built afresh on every scene
- * start, so the gate is closed again on every new run.
+ * the alley gate, the weapon lockers, and a navigation grid that mirrors the solids. Built
+ * afresh on every scene start, so the gate is closed again on every new run.
  */
 export class City {
   /** Every solid, the closed gate included: one collider per mover covers all of them. */
   readonly walls: Phaser.Physics.Arcade.StaticGroup;
   readonly gate: Gate;
   readonly nav: NavGrid;
+  readonly lockers: readonly WeaponLocker[];
 
   constructor(scene: Phaser.Scene) {
     this.drawGround(scene);
@@ -45,6 +47,8 @@ export class City {
     this.gate = new Gate(scene, GATE_RECT);
     this.walls.add(this.gate.bars);
     this.nav.setBlocked(GATE_RECT, true);
+
+    this.lockers = WEAPON_LOCKERS.map((placement) => new WeaponLocker(scene, placement));
   }
 
   get spawn(): Point {

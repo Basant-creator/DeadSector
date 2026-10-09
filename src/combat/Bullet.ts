@@ -10,6 +10,8 @@ const BODY_RADIUS = 3;
  */
 export class Bullet extends Phaser.Physics.Arcade.Sprite {
   private expiresAt = 0;
+  /** Damage this shot deals, set by the weapon that fired it. */
+  damage = 0;
 
   static createTexture(scene: Phaser.Scene): void {
     const g = scene.make.graphics({}, false);
@@ -25,7 +27,8 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Launch from (x, y) along *angle*; the bullet removes itself after *lifetimeMs*. */
-  fire(x: number, y: number, angle: number, speed: number, lifetimeMs: number): void {
+  fire(x: number, y: number, angle: number, speed: number, lifetimeMs: number, damage: number): void {
+    this.damage = damage;
     this.enableBody(true, x, y, true, true);
     // Set on every launch: the pool's group applies its own body defaults when it creates a
     // bullet, after the constructor has run.

@@ -19,7 +19,7 @@ export interface RunStats {
  * Everything one run accumulates. The scene makes a new Run on every start, so nothing in
  * here can outlive its run; only the high score is carried over, through the profile.
  *
- * Once the run is over its stats are frozen: a Walker killed afterwards by a bullet still in
+ * Once the run is over its stats are frozen: an enemy killed afterwards by a bullet still in
  * flight earns nothing.
  */
 export class Run {

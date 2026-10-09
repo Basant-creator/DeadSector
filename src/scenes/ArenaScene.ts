@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
+import { Arsenal } from '../combat/Arsenal';
 import { Bullet } from '../combat/Bullet';
-import { Pistol } from '../combat/Pistol';
-import { MUZZLE_OFFSET, Player, PLAYER_MAX_HP } from '../entities/Player';
-import { Walker, WALKER_RADIUS } from '../entities/Walker';
+import { type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/weapons';
+import { Enemy } from '../entities/Enemy';
+import { ENEMIES } from '../entities/enemies';
+import { muzzleOffset, Player, PLAYER_MAX_HP } from '../entities/Player';
 import { loadProfile, type Profile, saveProfile } from '../run/Profile';
 import { Run, type RunOutcome } from '../run/Run';
 import { GameOverScreen } from '../ui/GameOverScreen';
@@ -10,20 +12,24 @@ import { Hud, type HudState, type NoticeTone } from '../ui/Hud';
 import { WaveDirector } from '../waves/WaveDirector';
 import { City } from '../world/City';
 import { districtAt, SPAWN_POINTS, WORLD_HEIGHT, WORLD_WIDTH } from '../world/cityMap';
-import { GATE_COST } from '../world/Gate';
+import { GATE_COST, GATE_REACH } from '../world/Gate';
+import type { Purchasable } from '../world/Purchasable';
+import { LOCKER_REACH } from '../world/WeaponLocker';
 
 /** How long a notice such as "not enough coins" stays up. */
 const NOTICE_MS = 2200;
+const SLOT_KEYS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
 
-/** The city: a player with a pistol, waves of Walkers, the alley gate, a following camera. */
+/** The city: a player and their weapons, waves of enemies, things to buy, a following camera. */
 export class ArenaScene extends Phaser.Scene {
   // The scene object survives a restart, so create() reassigns every field: nothing of a run
-  // may outlive it. Walkers, bullets, timers, tweens and listeners go with the scene's shutdown.
+  // may outlive it. Enemies, bullets, timers, tweens and listeners go with the scene's shutdown.
   private city!: City;
   private player!: Player;
-  private pistol!: Pistol;
-  private walkers!: Phaser.GameObjects.Group;
+  private arsenal!: Arsenal;
+  private enemies!: Phaser.GameObjects.Group;
   private director!: WaveDirector;
+  private purchasables!: Purchasable[];
   private run!: Run;
   private profile!: Profile;
   private hud!: Hud;
@@ -48,26 +54,28 @@ export class ArenaScene extends Phaser.Scene {
     this.player = new Player(this, this.city.spawn.x, this.city.spawn.y);
     this.physics.add.collider(this.player, walls);
 
-    this.pistol = new Pistol(this);
-    // A plain group: colliders read its live members, and a destroyed Walker leaves it by itself.
-    this.walkers = this.add.group();
+    this.arsenal = new Arsenal(this);
+    this.player.holdWeapon(this.arsenal.current.def);
+    // A plain group: colliders read its live members, and a destroyed enemy leaves it by itself.
+    this.enemies = this.add.group();
     this.director = new WaveDirector(this, {
       spawnPoints: SPAWN_POINTS,
       // The flow field already points at the player, so this is a lookup.
       canSpawnAt: (point) => this.city.nav.isReachable(point),
-      walkers: this.walkers,
+      enemies: this.enemies,
       player: this.player,
-      onWalkerKilled: (walker) => this.run.recordKill(walker.coinReward),
+      onEnemyKilled: (enemy) => this.run.recordKill(enemy.coinReward),
       onWaveCleared: (_wave, last) => {
         this.run.recordWaveCleared();
         if (last) this.endRun('cleared');
       },
     });
+    this.purchasables = this.createPurchasables();
 
-    this.physics.add.collider(this.walkers, walls);
-    this.physics.add.collider(this.pistol.bullets, walls, (bullet) => (bullet as Bullet).kill());
-    this.physics.add.overlap(this.pistol.bullets, this.walkers, (a, b) => this.onBulletHitsWalker(a, b));
-    this.physics.add.overlap(this.player, this.walkers, (a, b) => this.onWalkerTouchesPlayer(a, b));
+    this.physics.add.collider(this.enemies, walls);
+    this.physics.add.collider(this.arsenal.bullets, walls, (bullet) => (bullet as Bullet).kill());
+    this.physics.add.overlap(this.arsenal.bullets, this.enemies, (a, b) => this.onBulletHitsEnemy(a, b));
+    this.physics.add.overlap(this.player, this.enemies, (a, b) => this.onEnemyTouchesPlayer(a, b));
 
     const camera = this.cameras.main;
     // Clamped to the city: the camera never shows past its edge.
@@ -77,8 +85,13 @@ export class ArenaScene extends Phaser.Scene {
     camera.startFollow(this.player, false, 0.1, 0.1);
 
     this.hud = new Hud(this);
-    // The scene's keyboard plugin drops this listener on shutdown, so restarts never stack it.
-    this.input.keyboard?.on('keydown-E', () => this.tryOpenGate());
+    // The scene's keyboard plugin drops these listeners on shutdown, so restarts never stack them.
+    const keyboard = this.input.keyboard;
+    keyboard?.on('keydown-E', () => this.tryPurchase());
+    keyboard?.on('keydown-Q', () => this.switchWeapon(() => this.arsenal.cycle()));
+    for (const id of WEAPON_IDS) {
+      keyboard?.on(`keydown-${SLOT_KEYS[WEAPONS[id].slot - 1]}`, () => this.selectWeapon(id));
+    }
   }
 
   update(): void {
@@ -88,15 +101,16 @@ export class ArenaScene extends Phaser.Scene {
       this.player.update(now);
       if (this.input.activePointer.leftButtonDown()) {
         const angle = this.player.aimAngle;
-        this.pistol.tryFire(now,
-          this.player.x + Math.cos(angle) * MUZZLE_OFFSET,
-          this.player.y + Math.sin(angle) * MUZZLE_OFFSET,
+        const muzzle = muzzleOffset(this.arsenal.current.def);
+        this.arsenal.tryFire(now,
+          this.player.x + Math.cos(angle) * muzzle,
+          this.player.y + Math.sin(angle) * muzzle,
           angle);
       }
       const nav = this.city.nav;
       nav.setTarget(this.player);
-      for (const walker of this.walkers.getChildren() as Walker[]) {
-        if (!walker.isDead) walker.pursue(nav.waypoint(walker, this.player, WALKER_RADIUS));
+      for (const enemy of this.enemies.getChildren() as Enemy[]) {
+        if (!enemy.isDead) enemy.pursue(nav.waypoint(enemy, this.player, enemy.radius));
       }
       this.director.update(now);
     }
@@ -104,16 +118,84 @@ export class ArenaScene extends Phaser.Scene {
     this.hud.update(this.hudState(now));
   }
 
-  /** E near the closed gate: pay for it once, or say why not. */
-  private tryOpenGate(): void {
+  /** The gate and one item per weapon locker, all bought through `tryPurchase`. */
+  private createPurchasables(): Purchasable[] {
     const gate = this.city.gate;
-    if (this.run.isOver || gate.isOpen || !gate.isWithinReach(this.player)) return;
-    if (!this.run.spend(GATE_COST)) {
-      this.showNotice(`NOT ENOUGH COINS: the gate costs ${GATE_COST}, you have ${this.run.coinBalance}`, 'warn');
+    const gateItem: Purchasable = {
+      position: gate.centre,
+      reach: GATE_REACH,
+      cost: GATE_COST,
+      noun: 'the gate',
+      action: 'open the alley gate',
+      isAvailable: () => !gate.isOpen,
+      deliver: () => {
+        this.city.openGate();
+        return `GATE OPEN: -${GATE_COST} coins. The Narrow Alleys are open.`;
+      },
+    };
+    const lockerItems = this.city.lockers.map((locker): Purchasable => {
+      const def = WEAPONS[locker.weapon];
+      return {
+        position: locker.standAt,
+        reach: LOCKER_REACH,
+        cost: def.cost,
+        noun: `the ${def.name}`,
+        action: `buy the ${def.name}`,
+        isAvailable: () => !this.arsenal.owns(def.id),
+        deliver: () => {
+          this.arsenal.grant(def.id);
+          this.player.holdWeapon(def);
+          locker.showForSale(false);
+          return `${def.name.toUpperCase()} BOUGHT: -${def.cost} coins. In hand; key ${def.slot} selects it.`;
+        },
+      };
+    });
+    return [gateItem, ...lockerItems];
+  }
+
+  /** The nearest item still for sale within reach of the player, if any. */
+  private purchasableInReach(): Purchasable | undefined {
+    let best: Purchasable | undefined;
+    let bestDistance = Infinity;
+    for (const item of this.purchasables) {
+      if (!item.isAvailable()) continue;
+      const distance = Phaser.Math.Distance.BetweenPoints(this.player, item.position);
+      if (distance <= item.reach && distance < bestDistance) {
+        best = item;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * E: buy what is in reach, or say why not. The one place coins are spent: the item stops
+   * being available as it is delivered, so a second press, or a held key, buys nothing more.
+   */
+  private tryPurchase(): void {
+    if (this.run.isOver) return;
+    const item = this.purchasableInReach();
+    if (!item) return;
+    if (!this.run.spend(item.cost)) {
+      this.showNotice(`NOT ENOUGH COINS: ${item.noun} costs ${item.cost}, you have ${this.run.coinBalance}`, 'warn');
       return;
     }
-    this.city.openGate();
-    this.showNotice(`GATE OPEN: -${GATE_COST} coins. The Narrow Alleys are open.`, 'info');
+    this.showNotice(item.deliver(), 'info');
+  }
+
+  private selectWeapon(id: WeaponId): void {
+    if (this.run.isOver) return;
+    const def = WEAPONS[id];
+    if (!this.arsenal.owns(id)) {
+      this.showNotice(`NOT OWNED: the ${def.name} is sold at a weapon locker for ${def.cost} coins`, 'warn');
+      return;
+    }
+    this.switchWeapon(() => this.arsenal.equip(id));
+  }
+
+  private switchWeapon(change: () => boolean): void {
+    if (this.run.isOver || !change()) return;
+    this.player.holdWeapon(this.arsenal.current.def);
   }
 
   private showNotice(text: string, tone: NoticeTone): void {
@@ -124,9 +206,9 @@ export class ArenaScene extends Phaser.Scene {
     const director = this.director;
     const seconds = Math.ceil(director.intermissionLeftMs(now) / 1000);
     const left = director.remaining;
-    const gate = this.city.gate;
-    const canBuyGate = !this.run.isOver && !gate.isOpen && gate.isWithinReach(this.player);
+    const item = this.run.isOver ? undefined : this.purchasableInReach();
     const showNotice = !this.run.isOver && now < this.notice.until;
+    const fresh = director.newKinds.map((kind) => ENEMIES[kind].name.toUpperCase());
     return {
       health: this.player.health,
       maxHealth: PLAYER_MAX_HP,
@@ -134,36 +216,40 @@ export class ArenaScene extends Phaser.Scene {
       waveCount: director.waveCount,
       waveStatus: {
         intermission: `next wave in ${seconds}`,
-        active: `${left} walker${left === 1 ? '' : 's'} left`,
+        active: `${left} ${left === 1 ? 'enemy' : 'enemies'} left`,
         complete: 'all waves cleared',
         stopped: 'run over',
       }[director.phase],
       coins: this.run.coinBalance,
-      weapon: this.pistol.name,
+      weapon: this.arsenal.current.def.id,
+      ownedWeapons: new Set(WEAPON_IDS.filter((id) => this.arsenal.owns(id))),
       elapsedMs: this.run.survivalMs(now),
-      banner: director.phase === 'intermission' ? `WAVE ${director.waveNumber}\n${seconds}` : '',
+      banner: director.phase === 'intermission'
+        ? [`WAVE ${director.waveNumber}`, ...(fresh.length > 0 ? [`NEW: ${fresh.join(', ')}`] : []), `${seconds}`].join('\n')
+        : '',
       district: districtAt(this.player).name,
-      prompt: canBuyGate ? `[E] open the alley gate: ${GATE_COST} coins` : '',
+      prompt: item ? `[E] ${item.action}: ${item.cost} coins` : '',
       notice: showNotice ? this.notice.text : '',
       noticeTone: this.notice.tone,
     };
   }
 
-  private onBulletHitsWalker(a: unknown, b: unknown): void {
+  private onBulletHitsEnemy(a: unknown, b: unknown): void {
     const bullet = (a instanceof Bullet ? a : b) as Bullet;
-    const walker = (a instanceof Walker ? a : b) as Walker;
+    const enemy = (a instanceof Enemy ? a : b) as Enemy;
     // A bullet is spent by its first hit: disabling it here stops it reaching anything else.
-    if (!bullet.active || walker.isDead) return;
+    // A dead enemy takes no hits, so pellets landing after the killing one pass on.
+    if (!bullet.active || enemy.isDead) return;
     bullet.kill();
-    walker.takeDamage(this.pistol.config.damage);
+    enemy.takeDamage(bullet.damage);
   }
 
-  private onWalkerTouchesPlayer(a: unknown, b: unknown): void {
-    const walker = (a instanceof Walker ? a : b) as Walker;
-    if (walker.isDead || this.run.isOver) return;
+  private onEnemyTouchesPlayer(a: unknown, b: unknown): void {
+    const enemy = (a instanceof Enemy ? a : b) as Enemy;
+    if (enemy.isDead || this.run.isOver) return;
     // Fires every step the two overlap; the player's invulnerability window turns that into
     // one hit per touch.
-    if (!this.player.takeDamage(walker.contactDamage, this.time.now)) return;
+    if (!this.player.takeDamage(enemy.contactDamage, this.time.now)) return;
     if (this.profile.settings.screenShake) this.cameras.main.shake(120, 0.006);
     if (this.player.isDead) this.endRun('died');
   }
@@ -176,7 +262,7 @@ export class ArenaScene extends Phaser.Scene {
     this.director.stop();
     // A cleared run leaves the player standing; stop it where it is.
     this.player.setVelocity(0, 0).setAlpha(1);
-    for (const walker of this.walkers.getChildren() as Walker[]) walker.halt();
+    for (const enemy of this.enemies.getChildren() as Enemy[]) enemy.halt();
 
     const stats = this.run.stats(now);
     const newHighScore = stats.coins > this.profile.highScore;
@@ -194,6 +280,7 @@ export class ArenaScene extends Phaser.Scene {
     });
 
     // The scene's keyboard plugin drops these listeners on shutdown, so a restart starts clean.
+    // [1] selects the pistol in play; the weapon handlers ignore it once the run is over.
     const keyboard = this.input.keyboard;
     keyboard?.once('keydown-R', () => this.scene.restart());
     keyboard?.on('keydown-ONE', () => this.toggleScreenShake());

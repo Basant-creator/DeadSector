@@ -1,0 +1,54 @@
+/** Every enemy type, by key. Stats live here only; `Enemy` reads them. */
+export type EnemyKind = 'walker' | 'runner' | 'brute' | 'elite';
+
+export interface EnemyDef {
+  readonly kind: EnemyKind;
+  /** Shown in wave announcements. */
+  readonly name: string;
+  readonly maxHp: number;
+  /** px/s. */
+  readonly speed: number;
+  /** Damage per touch; the player's invulnerability window spaces touches out. */
+  readonly contactDamage: number;
+  /** Coins the run earns when one dies. */
+  readonly coinReward: number;
+  /**
+   * Radius of the circular body, in px. At most 20: the narrowest gaps in the city are two
+   * tiles (64 px), and paths keep a body's centre at least half a tile from walls.
+   */
+  readonly radius: number;
+  readonly look: {
+    readonly body: number;
+    readonly arms: number;
+    /** Ring drawn around the body, for types that should stand out at a glance. */
+    readonly ring?: number;
+  };
+}
+
+export const ENEMIES: Readonly<Record<EnemyKind, EnemyDef>> = {
+  // The basic enemy: slow, and dangerous only in numbers.
+  walker: {
+    kind: 'walker', name: 'Walker', maxHp: 30, speed: 45, contactDamage: 10, coinReward: 4, radius: 15,
+    look: { body: 0x9c4a3c, arms: 0x6e3329 },
+  },
+  // Fast and fragile: twice a Walker's speed (half the player's), dies to two pistol shots.
+  runner: {
+    kind: 'runner', name: 'Runner', maxHp: 20, speed: 90, contactDamage: 12, coinReward: 6, radius: 12,
+    look: { body: 0xc8783c, arms: 0x8a4e24 },
+  },
+  // Slow and heavy: soaks fire and hits hard.
+  brute: {
+    kind: 'brute', name: 'Brute', maxHp: 120, speed: 32, contactDamage: 25, coinReward: 12, radius: 20,
+    look: { body: 0x6a2a24, arms: 0x4a1a16 },
+  },
+  // Quick, tough and well rewarded.
+  elite: {
+    kind: 'elite', name: 'Elite', maxHp: 75, speed: 65, contactDamage: 15, coinReward: 18, radius: 16,
+    look: { body: 0x7a3c8a, arms: 0x4e2458, ring: 0xd0a0e0 },
+  },
+};
+
+export const ENEMY_KINDS = Object.keys(ENEMIES) as EnemyKind[];
+
+/** The largest body of any enemy type, for clearance checks that must suit them all. */
+export const MAX_ENEMY_RADIUS = Math.max(...ENEMY_KINDS.map((kind) => ENEMIES[kind].radius));

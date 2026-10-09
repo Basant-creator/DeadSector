@@ -10,7 +10,7 @@ const OPEN_MS = 350;
 
 /**
  * A locked gate set into a wall. Closed, its bars are a static body like any wall: they
- * stop the player, Walkers and bullets. `open` takes the body out of the physics world and
+ * stop the player, enemies and bullets. `open` takes the body out of the physics world and
  * rolls the bars up. A gate belongs to its scene's run: a restart builds a new, closed one.
  */
 export class Gate {

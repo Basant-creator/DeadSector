@@ -4,8 +4,14 @@ import type { TileRect } from './cityMap';
 
 const ORTHOGONAL_COST = 10;
 const DIAGONAL_COST = 14;
+/**
+ * Extra cost of stepping onto a tile that touches a wall. Paths keep to the middle of streets
+ * and alleys where they can, which gives wide bodies (a Brute is 40 px) room to pass instead
+ * of scraping along walls and catching on corners.
+ */
+const WALL_PENALTY = 6;
 const UNREACHABLE = Number.POSITIVE_INFINITY;
-/** Steps along the flow a Walker looks ahead for a waypoint it can walk to in a straight line. */
+/** Steps along the flow an enemy looks ahead for a waypoint it can walk to in a straight line. */
 const LOOKAHEAD = 4;
 /** Spacing of the samples along a straight-line check, in px. */
 const SAMPLE_STEP = 8;
@@ -19,8 +25,9 @@ const NEIGHBOURS: readonly (readonly [number, number, number])[] = [
  * Tile grid of the walkable city, and a flow field over it toward one target (the player).
  *
  * The field is a Dijkstra distance from the target's tile to every tile, rebuilt only when
- * the target moves to another tile or the grid changes. Every Walker reads the same field, so
- * the cost does not grow with their number. Diagonal steps are allowed only when both
+ * the target moves to another tile or the grid changes. Every enemy reads the same field, so
+ * the cost does not grow with their number; each passes its own body radius when it asks for
+ * a waypoint. Diagonal steps are allowed only when both
  * orthogonal tiles are open, so a path never cuts a wall corner.
  */
 export class NavGrid {
@@ -28,9 +35,12 @@ export class NavGrid {
   readonly rows: number;
   readonly tile: number;
   private readonly blocked: Uint8Array;
+  /** 1 for an open tile with a blocked tile among its eight neighbours. */
+  private readonly nearWall: Uint8Array;
   private readonly distance: Float64Array;
   private targetCell = -1;
   private dirty = true;
+  private wallsChanged = true;
   private readonly waypointOut = new Phaser.Math.Vector2();
 
   constructor(cols: number, rows: number, tile: number) {
@@ -38,6 +48,7 @@ export class NavGrid {
     this.rows = rows;
     this.tile = tile;
     this.blocked = new Uint8Array(cols * rows);
+    this.nearWall = new Uint8Array(cols * rows);
     this.distance = new Float64Array(cols * rows).fill(UNREACHABLE);
   }
 
@@ -46,6 +57,7 @@ export class NavGrid {
       for (let c = col; c < col + cols; c++) this.blocked[r * this.cols + c] = blocked ? 1 : 0;
     }
     this.dirty = true;
+    this.wallsChanged = true;
   }
 
   isBlockedAt(x: number, y: number): boolean {
@@ -62,7 +74,7 @@ export class NavGrid {
     this.rebuild();
   }
 
-  /** Whether a Walker standing at *p* can walk to the current target. */
+  /** Whether an enemy standing at *p* can walk to the current target. */
   isReachable(p: Point): boolean {
     const cell = this.cellAt(p.x, p.y);
     return cell >= 0 && this.distance[cell] !== UNREACHABLE;
@@ -151,7 +163,30 @@ export class NavGrid {
     }
   }
 
+  private markNearWall(): void {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        let near = 0;
+        for (let dr = -1; dr <= 1 && !near; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = r + dr;
+            const nc = c + dc;
+            if (nr >= 0 && nc >= 0 && nr < this.rows && nc < this.cols && this.blocked[nr * this.cols + nc]) {
+              near = 1;
+              break;
+            }
+          }
+        }
+        this.nearWall[r * this.cols + c] = near;
+      }
+    }
+  }
+
   private rebuild(): void {
+    if (this.wallsChanged) {
+      this.markNearWall();
+      this.wallsChanged = false;
+    }
     const distance = this.distance;
     distance.fill(UNREACHABLE);
     if (this.targetCell < 0 || this.blocked[this.targetCell]) return;
@@ -198,8 +233,9 @@ export class NavGrid {
       settled[cell] = 1;
       const base = distance[cell];
       this.forEachNeighbour(cell, (next, cost) => {
-        if (base + cost < distance[next]) {
-          distance[next] = base + cost;
+        const step = cost + (this.nearWall[next] ? WALL_PENALTY : 0);
+        if (base + step < distance[next]) {
+          distance[next] = base + step;
           push(next);
         }
       });

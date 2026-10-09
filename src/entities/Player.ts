@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { STARTING_WEAPON, type WeaponDef, WEAPON_IDS, WEAPONS } from '../combat/weapons';
 
 /** Movement speed in px/s. Diagonals are normalized, so this holds in all eight directions. */
 export const PLAYER_SPEED = 180;
@@ -9,11 +10,17 @@ export const PLAYER_MAX_HP = 100;
  * 60 hits a second.
  */
 export const PLAYER_INVULNERABLE_MS = 800;
-/** Distance from the player's centre to the barrel tip, where shots start. */
-export const MUZZLE_OFFSET = 24;
+/** Where the drawn barrel starts, in px from the player's centre. */
+const BARREL_START = 6;
 
-const TEXTURE_KEY = 'player';
-const TEXTURE_SIZE = 48;
+/** Distance from the player's centre to the tip of *weapon*'s barrel, where its shots start. */
+export function muzzleOffset(weapon: WeaponDef): number {
+  return BARREL_START + weapon.barrel.length;
+}
+
+const textureKey = (weapon: WeaponDef) => `player-${weapon.id}`;
+/** Wide enough for the longest barrel. */
+const TEXTURE_SIZE = 64;
 const BODY_RADIUS = 14;
 const HIT_FLASH_MS = 90;
 const BLINK_PERIOD_MS = 80;
@@ -29,20 +36,26 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private invulnerableUntil = 0;
   private dead = false;
 
-  /** Draws the placeholder texture: a circle with a barrel pointing along +x (rotation 0). */
-  static createTexture(scene: Phaser.Scene): void {
+  /**
+   * Draws one placeholder texture per weapon: a circle with that weapon's barrel pointing
+   * along +x (rotation 0), so the weapon in hand shows on the player.
+   */
+  static createTextures(scene: Phaser.Scene): void {
     const c = TEXTURE_SIZE / 2;
-    const g = scene.make.graphics({}, false);
-    g.fillStyle(0xc8d6c0);
-    g.fillCircle(c, c, BODY_RADIUS);
-    g.fillStyle(0x7d8c74);
-    g.fillRect(c + 6, c - 3, 18, 6);
-    g.generateTexture(TEXTURE_KEY, TEXTURE_SIZE, TEXTURE_SIZE);
-    g.destroy();
+    for (const id of WEAPON_IDS) {
+      const { barrel } = WEAPONS[id];
+      const g = scene.make.graphics({}, false);
+      g.fillStyle(0xc8d6c0);
+      g.fillCircle(c, c, BODY_RADIUS);
+      g.fillStyle(barrel.color);
+      g.fillRect(c + BARREL_START, c - barrel.width / 2, barrel.length, barrel.width);
+      g.generateTexture(textureKey(WEAPONS[id]), TEXTURE_SIZE, TEXTURE_SIZE);
+      g.destroy();
+    }
   }
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, TEXTURE_KEY);
+    super(scene, x, y, textureKey(WEAPONS[STARTING_WEAPON]));
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
@@ -64,6 +77,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       down: keyboard.addKey(S),
       right: keyboard.addKey(D),
     };
+  }
+
+  /** Show *weapon* in hand. Every texture is the same size, so the body does not move. */
+  holdWeapon(weapon: WeaponDef): void {
+    this.setTexture(textureKey(weapon));
   }
 
   /** Current speed in px/s, for the debug readout. */
