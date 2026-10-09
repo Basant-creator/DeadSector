@@ -6,7 +6,12 @@ export const WALKER_STATS = {
   /** px/s. */
   speed: 45,
   contactDamage: 10,
+  /** Coins the run earns when one dies. */
+  coinReward: 4,
 } as const;
+
+/** Emitted on the Walker, with the Walker as its argument, the one time it dies. */
+export const WALKER_DIED = 'walker-died';
 
 const TEXTURE_KEY = 'walker';
 const TEXTURE_SIZE = 48;
@@ -17,6 +22,7 @@ const DEATH_FADE_MS = 180;
 /** Placeholder Walker. Faces where it walks; arms reach along +x (rotation 0). */
 export class Walker extends Phaser.Physics.Arcade.Sprite {
   readonly contactDamage = WALKER_STATS.contactDamage;
+  readonly coinReward = WALKER_STATS.coinReward;
   private hp: number = WALKER_STATS.maxHp;
   private dead = false;
 
@@ -83,7 +89,8 @@ export class Walker extends Phaser.Physics.Arcade.Sprite {
 
   /**
    * The body is disabled at once, so nothing can hit or be hurt by a dying Walker; the
-   * sprite fades out and is destroyed, which also removes it from every group it is in.
+   * sprite fades out and is destroyed, which also removes it from every group it is in and
+   * drops its listeners. Only reachable once: `takeDamage` ignores a dead Walker.
    */
   private die(): void {
     this.dead = true;
@@ -97,5 +104,6 @@ export class Walker extends Phaser.Physics.Arcade.Sprite {
       duration: DEATH_FADE_MS,
       onComplete: () => this.destroy(),
     });
+    this.emit(WALKER_DIED, this);
   }
 }

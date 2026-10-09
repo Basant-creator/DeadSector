@@ -4,6 +4,7 @@ import { Pistol } from '../combat/Pistol';
 import { MUZZLE_OFFSET, Player, PLAYER_MAX_HP } from '../entities/Player';
 import { Walker } from '../entities/Walker';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config';
+import { type Point, WaveDirector } from '../waves/WaveDirector';
 
 const ARENA_WIDTH = 2400;
 const ARENA_HEIGHT = 1600;
@@ -47,22 +48,47 @@ const OBSTACLES: readonly Block[] = [
   [2120, 1368, 48, 48],
 ];
 
-/** Where the one Walker starts: clear of every obstacle, with an open line to the player's spawn. */
-const WALKER_SPAWN = { x: 500, y: 1400 } as const;
+/**
+ * Where Walkers enter: along the outer walls, at least 64 px from every wall and obstacle.
+ * Spread around the whole arena so some are always far from the player and off screen.
+ */
+const SPAWN_POINTS: readonly Point[] = [
+  { x: 600, y: 96 },
+  { x: 1500, y: 96 },
+  { x: 2304, y: 96 },
+  { x: 96, y: 500 },
+  { x: 2304, y: 500 },
+  { x: 96, y: 1100 },
+  { x: 2304, y: 1100 },
+  { x: 96, y: 1504 },
+  { x: 600, y: 1504 },
+  { x: 1200, y: 1504 },
+  { x: 1800, y: 1504 },
+  { x: 2304, y: 1504 },
+];
 
-/** Test arena: static walls and obstacles, a player with a pistol, one Walker, a following camera. */
+/** Test arena: static walls and obstacles, a player with a pistol, waves of Walkers, a following camera. */
 export class ArenaScene extends Phaser.Scene {
   private player!: Player;
   private pistol!: Pistol;
   private walkers!: Phaser.GameObjects.Group;
+  private director!: WaveDirector;
   private debugText!: Phaser.GameObjects.Text;
+  private bannerText!: Phaser.GameObjects.Text;
+  // The scene object survives a restart; create() resets every per-run field below.
+  private coins = 0;
   private lastHud = '';
+  private lastBanner = '';
 
   constructor() {
     super('ArenaScene');
   }
 
   create(): void {
+    this.coins = 0;
+    this.lastHud = '';
+    this.lastBanner = '';
+
     // World bounds default to the canvas size; widen them to the whole arena.
     this.physics.world.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
 
@@ -82,7 +108,14 @@ export class ArenaScene extends Phaser.Scene {
     this.pistol = new Pistol(this);
     // A plain group: colliders read its live members, and a destroyed Walker leaves it by itself.
     this.walkers = this.add.group();
-    this.walkers.add(new Walker(this, WALKER_SPAWN.x, WALKER_SPAWN.y));
+    this.director = new WaveDirector(this, {
+      spawnPoints: SPAWN_POINTS,
+      walkers: this.walkers,
+      player: this.player,
+      onWalkerKilled: (walker) => {
+        this.coins += walker.coinReward;
+      },
+    });
 
     this.physics.add.collider(this.walkers, walls);
     this.physics.add.collider(this.pistol.bullets, walls, (bullet) => (bullet as Bullet).kill());
@@ -99,6 +132,15 @@ export class ArenaScene extends Phaser.Scene {
       .text(16, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#8a9a80' })
       .setScrollFactor(0)
       .setDepth(10);
+    this.bannerText = this.add
+      .text(GAME_WIDTH / 2, 90, '', {
+        fontFamily: 'monospace', fontSize: '32px', color: '#c8d6c0', align: 'center',
+        // Outlined: it sits over the walls at the top of the screen.
+        stroke: '#0b0d0b', strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(20);
   }
 
   update(): void {
@@ -114,14 +156,40 @@ export class ArenaScene extends Phaser.Scene {
           angle);
       }
       for (const walker of this.walkers.getChildren() as Walker[]) walker.pursue(this.player);
+      this.director.update(now);
     }
 
-    // Only re-render the text when it changes.
+    this.updateHud(now);
+  }
+
+  private updateHud(now: number): void {
+    const director = this.director;
+    const seconds = Math.ceil(director.intermissionLeftMs(now) / 1000);
+    const status = {
+      intermission: `next wave in ${seconds}`,
+      active: `walkers left ${director.remaining}`,
+      complete: 'all waves cleared',
+      stopped: 'run over',
+    }[director.phase];
+
+    // Only re-render the texts when they change.
     const hud = `WASD move | mouse aim | LMB fire\nHP ${this.player.health}/${PLAYER_MAX_HP}  ` +
-      `speed ${Math.round(this.player.speed)} px/s`;
+      `speed ${Math.round(this.player.speed)} px/s\n` +
+      `WAVE ${director.waveNumber}/${director.waveCount}  ${status}  coins ${this.coins}`;
     if (hud !== this.lastHud) {
       this.lastHud = hud;
       this.debugText.setText(hud);
+    }
+
+    const banner = {
+      intermission: `WAVE ${director.waveNumber}\n${seconds}`,
+      active: '',
+      complete: `ALL WAVES CLEARED\n${this.coins} coins`,
+      stopped: '',
+    }[director.phase];
+    if (banner !== this.lastBanner) {
+      this.lastBanner = banner;
+      this.bannerText.setText(banner);
     }
   }
 
@@ -145,6 +213,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private onPlayerDeath(): void {
+    this.director.stop();
     for (const walker of this.walkers.getChildren() as Walker[]) walker.halt();
     this.add
       // Above centre: the camera keeps the player in the middle of the screen.
