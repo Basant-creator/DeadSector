@@ -1,5 +1,8 @@
-/** Every enemy type, by key. Stats live here only; `Enemy` reads them. */
-export type EnemyKind = 'walker' | 'runner' | 'brute' | 'elite';
+/**
+ * Every enemy type, by key. Stats live here only; `Enemy` reads them. The Giant's encounter
+ * rules and attacks are in `giantRules.ts`.
+ */
+export type EnemyKind = 'walker' | 'runner' | 'brute' | 'elite' | 'giant';
 
 export interface EnemyDef {
   readonly kind: EnemyKind;
@@ -13,8 +16,9 @@ export interface EnemyDef {
   /** Coins the run earns when one dies. */
   readonly coinReward: number;
   /**
-   * Radius of the circular body, in px. At most 20: the narrowest gaps in the city are two
-   * tiles (64 px), and paths keep a body's centre at least half a tile from walls.
+   * Radius of the circular body, in px. Under 32: the narrowest gaps in the city are two tiles
+   * (64 px), and the navigation grid has no clearance model beyond that. Each size in use has
+   * been walked from every spawn point.
    */
   readonly radius: number;
   readonly look: {
@@ -46,9 +50,11 @@ export const ENEMIES: Readonly<Record<EnemyKind, EnemyDef>> = {
     kind: 'elite', name: 'Elite', maxHp: 75, speed: 65, contactDamage: 15, coinReward: 18, radius: 16,
     look: { body: 0x7a3c8a, arms: 0x4e2458, ring: 0xd0a0e0 },
   },
+  // A rare boss, never part of a wave's roster: see `giantRules.ts`.
+  giant: {
+    kind: 'giant', name: 'Giant', maxHp: 1200, speed: 30, contactDamage: 30, coinReward: 60, radius: 26,
+    look: { body: 0x4e5a3e, arms: 0x343c2a, ring: 0xc8553d },
+  },
 };
 
 export const ENEMY_KINDS = Object.keys(ENEMIES) as EnemyKind[];
-
-/** The largest body of any enemy type, for clearance checks that must suit them all. */
-export const MAX_ENEMY_RADIUS = Math.max(...ENEMY_KINDS.map((kind) => ENEMIES[kind].radius));

@@ -25,6 +25,12 @@ export interface HudState {
   /** Short-lived feedback, e.g. not enough coins; empty hides it. */
   notice: string;
   noticeTone: NoticeTone;
+  /** The boss in play, for its health bar; null hides the bar. */
+  boss: { name: string; health: number; maxHealth: number } | null;
+  /** Boss warning; empty hides it. */
+  warning: string;
+  /** Pulses the warning between full and dim; it never disappears. */
+  warningBright: boolean;
 }
 
 export type NoticeTone = 'info' | 'warn';
@@ -35,6 +41,7 @@ export const UI_COLORS = {
   outline: '#0b0d0b',
   info: '#7fb069',
   warn: '#e0a040',
+  danger: '#e0553d',
 } as const;
 
 const PAD = 20;
@@ -42,6 +49,8 @@ const BAR_WIDTH = 220;
 const BAR_HEIGHT = 12;
 const HEALTH_COLORS = { high: 0x7fb069, mid: 0xd9a441, low: 0xc8553d } as const;
 const DEPTH = 10;
+const BOSS_BAR_WIDTH = 420;
+const BOSS_BAR_HEIGHT = 10;
 const SLOT_GAP = 16;
 const BANNER_DEPTH = 20;
 
@@ -76,6 +85,10 @@ export class Hud {
   private readonly promptText: Phaser.GameObjects.Text;
   private readonly noticeText: Phaser.GameObjects.Text;
   private noticeTone: NoticeTone = 'info';
+  private readonly bossParts: Phaser.GameObjects.Components.Visible[];
+  private readonly bossLabel: Phaser.GameObjects.Text;
+  private readonly bossFill: Phaser.GameObjects.Rectangle;
+  private readonly warningText: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene) {
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(
@@ -123,12 +136,28 @@ export class Hud {
       .setOrigin(0.5, 1)
       .setText('WASD move   mouse aim   LMB fire');
 
+    // Boss health under the wave counter, and the warning that comes before the boss.
+    const bossY = PAD + 62;
+    this.bossLabel = text(GAME_WIDTH / 2, bossY, 14, UI_COLORS.danger).setOrigin(0.5, 0);
+    const bossBack = fixed(scene.add.rectangle(GAME_WIDTH / 2 - BOSS_BAR_WIDTH / 2, bossY + 20, BOSS_BAR_WIDTH, BOSS_BAR_HEIGHT, 0x1a1f19)
+      .setOrigin(0).setStrokeStyle(1, 0x6a2a24));
+    this.bossFill = fixed(scene.add.rectangle(GAME_WIDTH / 2 - BOSS_BAR_WIDTH / 2, bossY + 20, BOSS_BAR_WIDTH, BOSS_BAR_HEIGHT, 0xc8553d)
+      .setOrigin(0));
+    this.bossParts = [this.bossLabel, bossBack, this.bossFill];
+    this.warningText = fixed(
+      scene.add.text(GAME_WIDTH / 2, 275, '', {
+        fontFamily: 'monospace', fontSize: '28px', color: UI_COLORS.danger, align: 'center',
+        stroke: UI_COLORS.outline, strokeThickness: 6,
+      }).setOrigin(0.5),
+      BANNER_DEPTH,
+    );
+
     // Interaction prompt and feedback, lower centre: clear of the player and the wave banner.
     this.promptText = text(GAME_WIDTH / 2, GAME_HEIGHT - 70, 18).setOrigin(0.5, 1);
     this.noticeText = text(GAME_WIDTH / 2, GAME_HEIGHT - 110, 20, UI_COLORS.info).setOrigin(0.5, 1);
 
     this.bannerText = fixed(
-      scene.add.text(GAME_WIDTH / 2, 150, '', {
+      scene.add.text(GAME_WIDTH / 2, 185, '', {
         fontFamily: 'monospace', fontSize: '32px', color: UI_COLORS.text, align: 'center',
         stroke: UI_COLORS.outline, strokeThickness: 6,
       }).setOrigin(0.5),
@@ -165,6 +194,13 @@ export class Hud {
     }
     this.bannerText.setText(state.banner);
     this.districtText.setText(state.district.toUpperCase());
+    const { boss } = state;
+    for (const part of this.bossParts) part.setVisible(boss !== null);
+    if (boss) {
+      this.bossLabel.setText(`${boss.name.toUpperCase()}  ${boss.health}/${boss.maxHealth}`);
+      this.bossFill.setScale(Phaser.Math.Clamp(boss.health / boss.maxHealth, 0, 1), 1);
+    }
+    this.warningText.setText(state.warning).setAlpha(state.warningBright ? 1 : 0.45);
     this.promptText.setText(state.prompt);
     this.noticeText.setText(state.notice);
     // Unlike setText, setColor re-renders the text even when the colour is unchanged.

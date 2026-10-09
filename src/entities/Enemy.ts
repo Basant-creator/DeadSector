@@ -1,8 +1,19 @@
 import Phaser from 'phaser';
+import type { NavGrid } from '../world/NavGrid';
 import { ENEMIES, ENEMY_KINDS, type EnemyDef, type EnemyKind } from './enemies';
 
 /** Emitted on the enemy, with the enemy as its argument, the one time it dies. */
 export const ENEMY_DIED = 'enemy-died';
+
+/** What an enemy may see and do each frame, handed to `act` by the scene. */
+export interface EnemyContext {
+  readonly player: { readonly x: number; readonly y: number; readonly isDead: boolean };
+  readonly nav: NavGrid;
+  /** Deal *amount* to the player. Returns whether it landed (not dead or invulnerable). */
+  hurtPlayer(amount: number): boolean;
+  /** Camera shake for heavy impacts; does nothing when the player has turned shake off. */
+  shake(durationMs: number, intensity: number): void;
+}
 
 const HIT_FLASH_MS = 70;
 const DEATH_FADE_MS = 180;
@@ -82,6 +93,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     return this.dead;
   }
 
+  /** One frame of behaviour: by default, follow the flow field toward the player. */
+  act(_now: number, ctx: EnemyContext): void {
+    if (!this.dead) this.pursue(ctx.nav.waypoint(this, ctx.player, this.radius));
+  }
+
   /**
    * Head straight for *target* at this type's speed. Pathfinding is the caller's: it passes
    * the next waypoint around the walls, and the physics separation lets the enemy slide along
@@ -119,7 +135,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
    * listeners. Only reachable once: `takeDamage` ignores a dead enemy, so however many pellets
    * land in the same step, the death and its reward happen one time.
    */
-  private die(): void {
+  protected die(): void {
     this.dead = true;
     this.setVelocity(0, 0);
     this.disableBody(false, false);

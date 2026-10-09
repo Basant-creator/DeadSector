@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Arsenal } from '../combat/Arsenal';
 import { Bullet } from '../combat/Bullet';
 import { type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/weapons';
-import { Enemy } from '../entities/Enemy';
+import { Enemy, type EnemyContext } from '../entities/Enemy';
 import { ENEMIES } from '../entities/enemies';
 import { muzzleOffset, Player, PLAYER_MAX_HP } from '../entities/Player';
 import { loadProfile, type Profile, saveProfile } from '../run/Profile';
@@ -33,6 +33,7 @@ export class ArenaScene extends Phaser.Scene {
   private run!: Run;
   private profile!: Profile;
   private hud!: Hud;
+  private enemyContext!: EnemyContext;
   private gameOver: GameOverScreen | null = null;
   private notice = { text: '', tone: 'info' as NoticeTone, until: 0 };
 
@@ -85,6 +86,14 @@ export class ArenaScene extends Phaser.Scene {
     camera.startFollow(this.player, false, 0.1, 0.1);
 
     this.hud = new Hud(this);
+    this.enemyContext = {
+      player: this.player,
+      nav: this.city.nav,
+      hurtPlayer: (amount) => this.damagePlayer(amount),
+      shake: (durationMs, intensity) => {
+        if (this.profile.settings.screenShake) this.cameras.main.shake(durationMs, intensity);
+      },
+    };
     // The scene's keyboard plugin drops these listeners on shutdown, so restarts never stack them.
     const keyboard = this.input.keyboard;
     keyboard?.on('keydown-E', () => this.tryPurchase());
@@ -107,11 +116,9 @@ export class ArenaScene extends Phaser.Scene {
           this.player.y + Math.sin(angle) * muzzle,
           angle);
       }
-      const nav = this.city.nav;
-      nav.setTarget(this.player);
-      for (const enemy of this.enemies.getChildren() as Enemy[]) {
-        if (!enemy.isDead) enemy.pursue(nav.waypoint(enemy, this.player, enemy.radius));
-      }
+      this.city.nav.setTarget(this.player);
+      // A copy: an enemy dying mid-loop leaves the group.
+      for (const enemy of this.enemies.getChildren().slice() as Enemy[]) enemy.act(now, this.enemyContext);
       this.director.update(now);
     }
 
@@ -209,6 +216,8 @@ export class ArenaScene extends Phaser.Scene {
     const item = this.run.isOver ? undefined : this.purchasableInReach();
     const showNotice = !this.run.isOver && now < this.notice.until;
     const fresh = director.newKinds.map((kind) => ENEMIES[kind].name.toUpperCase());
+    const boss = director.boss;
+    const warningLeft = this.run.isOver ? 0 : director.giantWarningLeftMs(now);
     return {
       health: this.player.health,
       maxHealth: PLAYER_MAX_HP,
@@ -216,7 +225,7 @@ export class ArenaScene extends Phaser.Scene {
       waveCount: director.waveCount,
       waveStatus: {
         intermission: `next wave in ${seconds}`,
-        active: `${left} ${left === 1 ? 'enemy' : 'enemies'} left`,
+        active: director.waitingOnGiant ? 'the Giant remains' : `${left} ${left === 1 ? 'enemy' : 'enemies'} left`,
         complete: 'all waves cleared',
         stopped: 'run over',
       }[director.phase],
@@ -231,6 +240,10 @@ export class ArenaScene extends Phaser.Scene {
       prompt: item ? `[E] ${item.action}: ${item.cost} coins` : '',
       notice: showNotice ? this.notice.text : '',
       noticeTone: this.notice.tone,
+      boss: boss && !boss.isDead ? { name: boss.def.name, health: boss.health, maxHealth: boss.def.maxHp } : null,
+      // Pulses twice a second until the Giant arrives.
+      warning: warningLeft > 0 ? `WARNING: A GIANT IS COMING (${Math.ceil(warningLeft / 1000)})` : '',
+      warningBright: Math.floor(now / 250) % 2 === 0,
     };
   }
 
@@ -246,12 +259,21 @@ export class ArenaScene extends Phaser.Scene {
 
   private onEnemyTouchesPlayer(a: unknown, b: unknown): void {
     const enemy = (a instanceof Enemy ? a : b) as Enemy;
-    if (enemy.isDead || this.run.isOver) return;
+    if (enemy.isDead) return;
     // Fires every step the two overlap; the player's invulnerability window turns that into
     // one hit per touch.
-    if (!this.player.takeDamage(enemy.contactDamage, this.time.now)) return;
+    this.damagePlayer(enemy.contactDamage);
+  }
+
+  /**
+   * Every hit on the player goes through here: touches and the Giant's attacks alike. Returns
+   * whether it landed; the invulnerability window after a hit absorbs the rest.
+   */
+  private damagePlayer(amount: number): boolean {
+    if (this.run.isOver || !this.player.takeDamage(amount, this.time.now)) return false;
     if (this.profile.settings.screenShake) this.cameras.main.shake(120, 0.006);
     if (this.player.isDead) this.endRun('died');
+    return true;
   }
 
   /** Freeze the city, bank the high score, and show the summary. Runs once per run. */
