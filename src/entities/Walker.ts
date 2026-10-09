@@ -16,6 +16,8 @@ export const WALKER_DIED = 'walker-died';
 const TEXTURE_KEY = 'walker';
 const TEXTURE_SIZE = 48;
 const BODY_RADIUS = 15;
+/** Radius of the Walker's circular body, for navigation. */
+export const WALKER_RADIUS = BODY_RADIUS;
 const HIT_FLASH_MS = 70;
 const DEATH_FADE_MS = 180;
 
@@ -58,8 +60,8 @@ export class Walker extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Head straight for *target*. No pathfinding: walls stop it, and the physics separation
-   * lets it slide along a wall it meets at an angle.
+   * Head straight for *target*. Pathfinding is the caller's: it passes the next waypoint
+   * around the walls, and the physics separation lets the Walker slide along any it grazes.
    */
   pursue(target: { x: number; y: number }): void {
     if (this.dead) return;

@@ -27,6 +27,8 @@ const POOL_SIZE = 32;
 
 /** A semi-automatic pistol: one bullet per shot, limited by `fireRate`. */
 export class Pistol {
+  /** Shown in the HUD. */
+  readonly name = 'Pistol';
   readonly config: PistolConfig;
   readonly bullets: Phaser.Physics.Arcade.Group;
   private nextShotAt = 0;

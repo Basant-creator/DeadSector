@@ -46,11 +46,15 @@ export interface Point {
 export interface WaveDirectorOptions {
   /** Authored positions clear of every wall; the director picks among the safe ones. */
   spawnPoints: readonly Point[];
+  /** Whether a Walker spawned at *point* could reach the player, e.g. not behind a locked gate. */
+  canSpawnAt: (point: Point) => boolean;
   /** Spawned Walkers are added here; the scene owns their colliders and pursuit. */
   walkers: Phaser.GameObjects.Group;
   player: Point;
   /** Called once per Walker of the run, when it dies. */
   onWalkerKilled: (walker: Walker) => void;
+  /** Called once per wave, when its last Walker dies; *last* when that ends the run. */
+  onWaveCleared: (waveNumber: number, last: boolean) => void;
 }
 
 /**
@@ -132,7 +136,7 @@ export class WaveDirector {
   }
 
   private pickSpawnPoint(): Point | undefined {
-    const { player, walkers, spawnPoints } = this.options;
+    const { player, walkers, spawnPoints, canSpawnAt } = this.options;
     const view = Phaser.Geom.Rectangle.Inflate(
       Phaser.Geom.Rectangle.Clone(this.scene.cameras.main.worldView),
       WAVE_TUNING.offscreenMargin,
@@ -143,6 +147,7 @@ export class WaveDirector {
       (p) =>
         Phaser.Math.Distance.BetweenPoints(p, player) >= WAVE_TUNING.minSpawnDistance &&
         !view.contains(p.x, p.y) &&
+        canSpawnAt(p) &&
         living.every((w) => Phaser.Math.Distance.BetweenPoints(p, w) >= WAVE_TUNING.spawnClearance),
     );
     return safe.length > 0 ? Phaser.Utils.Array.GetRandom(safe) : undefined;
@@ -151,17 +156,20 @@ export class WaveDirector {
   private onWalkerDied(walker: Walker): void {
     this.options.onWalkerKilled(walker);
     this.killed++;
-    // Death stops progression, so a Walker killed by a bullet still in flight counts
-    // for coins but cannot clear the wave.
+    // Death stops progression, so a Walker killed by a bullet still in flight cannot
+    // clear the wave.
     if (this.currentPhase !== 'active' || this.remaining > 0) return;
-    if (this.waveIndex === WAVES.length - 1) {
+    const cleared = this.waveNumber;
+    const last = this.waveIndex === WAVES.length - 1;
+    if (last) {
       this.currentPhase = 'complete';
-      return;
+    } else {
+      this.waveIndex++;
+      this.spawned = 0;
+      this.killed = 0;
+      this.currentPhase = 'intermission';
+      this.intermissionEndsAt = this.scene.time.now + WAVE_TUNING.intermissionMs;
     }
-    this.waveIndex++;
-    this.spawned = 0;
-    this.killed = 0;
-    this.currentPhase = 'intermission';
-    this.intermissionEndsAt = this.scene.time.now + WAVE_TUNING.intermissionMs;
+    this.options.onWaveCleared(cleared, last);
   }
 }

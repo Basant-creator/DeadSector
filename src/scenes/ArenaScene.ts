@@ -2,107 +2,50 @@ import Phaser from 'phaser';
 import { Bullet } from '../combat/Bullet';
 import { Pistol } from '../combat/Pistol';
 import { MUZZLE_OFFSET, Player, PLAYER_MAX_HP } from '../entities/Player';
-import { Walker } from '../entities/Walker';
-import { GAME_HEIGHT, GAME_WIDTH } from '../config';
-import { type Point, WaveDirector } from '../waves/WaveDirector';
+import { Walker, WALKER_RADIUS } from '../entities/Walker';
+import { loadProfile, type Profile, saveProfile } from '../run/Profile';
+import { Run, type RunOutcome } from '../run/Run';
+import { GameOverScreen } from '../ui/GameOverScreen';
+import { Hud, type HudState, type NoticeTone } from '../ui/Hud';
+import { WaveDirector } from '../waves/WaveDirector';
+import { City } from '../world/City';
+import { districtAt, SPAWN_POINTS, WORLD_HEIGHT, WORLD_WIDTH } from '../world/cityMap';
+import { GATE_COST } from '../world/Gate';
 
-const ARENA_WIDTH = 2400;
-const ARENA_HEIGHT = 1600;
-const WALL_THICKNESS = 32;
-const GRID_SIZE = 64;
+/** How long a notice such as "not enough coins" stays up. */
+const NOTICE_MS = 2200;
 
-/** Axis-aligned block as [x, y, width, height], top-left origin, in world pixels. */
-type Block = readonly [number, number, number, number];
-
-const OUTER_WALLS: readonly Block[] = [
-  [0, 0, ARENA_WIDTH, WALL_THICKNESS],
-  [0, ARENA_HEIGHT - WALL_THICKNESS, ARENA_WIDTH, WALL_THICKNESS],
-  [0, WALL_THICKNESS, WALL_THICKNESS, ARENA_HEIGHT - WALL_THICKNESS * 2],
-  [ARENA_WIDTH - WALL_THICKNESS, WALL_THICKNESS, WALL_THICKNESS, ARENA_HEIGHT - WALL_THICKNESS * 2],
-];
-
-const OBSTACLES: readonly Block[] = [
-  // Pillars
-  [400, 300, 64, 64],
-  [800, 300, 64, 64],
-  [1536, 300, 64, 64],
-  [1936, 300, 64, 64],
-  [400, 1236, 64, 64],
-  [800, 1236, 64, 64],
-  [1536, 1236, 64, 64],
-  [1936, 1236, 64, 64],
-  // Barriers framing the spawn
-  [960, 520, 480, 32],
-  [960, 1048, 480, 32],
-  [600, 600, 32, 400],
-  [1768, 600, 32, 400],
-  // L-shaped corner cover
-  [160, 160, 240, 32],
-  [160, 192, 32, 208],
-  // Narrow corridor (40 px gap; player is 28 px wide)
-  [1100, 160, 32, 240],
-  [1172, 160, 32, 240],
-  // Crate cluster
-  [2120, 1320, 48, 48],
-  [2168, 1320, 48, 48],
-  [2120, 1368, 48, 48],
-];
-
-/**
- * Where Walkers enter: along the outer walls, at least 64 px from every wall and obstacle.
- * Spread around the whole arena so some are always far from the player and off screen.
- */
-const SPAWN_POINTS: readonly Point[] = [
-  { x: 600, y: 96 },
-  { x: 1500, y: 96 },
-  { x: 2304, y: 96 },
-  { x: 96, y: 500 },
-  { x: 2304, y: 500 },
-  { x: 96, y: 1100 },
-  { x: 2304, y: 1100 },
-  { x: 96, y: 1504 },
-  { x: 600, y: 1504 },
-  { x: 1200, y: 1504 },
-  { x: 1800, y: 1504 },
-  { x: 2304, y: 1504 },
-];
-
-/** Test arena: static walls and obstacles, a player with a pistol, waves of Walkers, a following camera. */
+/** The city: a player with a pistol, waves of Walkers, the alley gate, a following camera. */
 export class ArenaScene extends Phaser.Scene {
+  // The scene object survives a restart, so create() reassigns every field: nothing of a run
+  // may outlive it. Walkers, bullets, timers, tweens and listeners go with the scene's shutdown.
+  private city!: City;
   private player!: Player;
   private pistol!: Pistol;
   private walkers!: Phaser.GameObjects.Group;
   private director!: WaveDirector;
-  private debugText!: Phaser.GameObjects.Text;
-  private bannerText!: Phaser.GameObjects.Text;
-  // The scene object survives a restart; create() resets every per-run field below.
-  private coins = 0;
-  private lastHud = '';
-  private lastBanner = '';
+  private run!: Run;
+  private profile!: Profile;
+  private hud!: Hud;
+  private gameOver: GameOverScreen | null = null;
+  private notice = { text: '', tone: 'info' as NoticeTone, until: 0 };
 
   constructor() {
     super('ArenaScene');
   }
 
   create(): void {
-    this.coins = 0;
-    this.lastHud = '';
-    this.lastBanner = '';
+    this.run = new Run(this.time.now);
+    this.profile = loadProfile();
+    this.gameOver = null;
+    this.notice = { text: '', tone: 'info', until: 0 };
 
-    // World bounds default to the canvas size; widen them to the whole arena.
-    this.physics.world.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+    // World bounds default to the canvas size; widen them to the whole city.
+    this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.city = new City(this);
+    const walls = this.city.walls;
 
-    this.add.grid(0, 0, ARENA_WIDTH, ARENA_HEIGHT, GRID_SIZE, GRID_SIZE, 0x0b0d0b, 1, 0x1a1f19, 1).setOrigin(0);
-
-    const walls = this.physics.add.staticGroup();
-    for (const block of OUTER_WALLS) {
-      walls.add(this.addBlock(block, 0x3a4038));
-    }
-    for (const block of OBSTACLES) {
-      walls.add(this.addBlock(block, 0x4c5444).setStrokeStyle(2, 0x6b7560));
-    }
-
-    this.player = new Player(this, ARENA_WIDTH / 2, ARENA_HEIGHT / 2);
+    this.player = new Player(this, this.city.spawn.x, this.city.spawn.y);
     this.physics.add.collider(this.player, walls);
 
     this.pistol = new Pistol(this);
@@ -110,10 +53,14 @@ export class ArenaScene extends Phaser.Scene {
     this.walkers = this.add.group();
     this.director = new WaveDirector(this, {
       spawnPoints: SPAWN_POINTS,
+      // The flow field already points at the player, so this is a lookup.
+      canSpawnAt: (point) => this.city.nav.isReachable(point),
       walkers: this.walkers,
       player: this.player,
-      onWalkerKilled: (walker) => {
-        this.coins += walker.coinReward;
+      onWalkerKilled: (walker) => this.run.recordKill(walker.coinReward),
+      onWaveCleared: (_wave, last) => {
+        this.run.recordWaveCleared();
+        if (last) this.endRun('cleared');
       },
     });
 
@@ -123,31 +70,22 @@ export class ArenaScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.walkers, (a, b) => this.onWalkerTouchesPlayer(a, b));
 
     const camera = this.cameras.main;
-    camera.setBounds(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+    // Clamped to the city: the camera never shows past its edge.
+    camera.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     // roundPixels must stay off: Phaser floors the scroll after lerping, which swallows the final
     // sub-pixel steps and parks the camera up to 9 px off-centre with lerp 0.1.
     camera.startFollow(this.player, false, 0.1, 0.1);
 
-    this.debugText = this.add
-      .text(16, 16, '', { fontFamily: 'monospace', fontSize: '14px', color: '#8a9a80' })
-      .setScrollFactor(0)
-      .setDepth(10);
-    this.bannerText = this.add
-      .text(GAME_WIDTH / 2, 90, '', {
-        fontFamily: 'monospace', fontSize: '32px', color: '#c8d6c0', align: 'center',
-        // Outlined: it sits over the walls at the top of the screen.
-        stroke: '#0b0d0b', strokeThickness: 6,
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(20);
+    this.hud = new Hud(this);
+    // The scene's keyboard plugin drops this listener on shutdown, so restarts never stack it.
+    this.input.keyboard?.on('keydown-E', () => this.tryOpenGate());
   }
 
   update(): void {
     const now = this.time.now;
-    this.player.update(now);
 
-    if (!this.player.isDead) {
+    if (!this.run.isOver) {
+      this.player.update(now);
       if (this.input.activePointer.leftButtonDown()) {
         const angle = this.player.aimAngle;
         this.pistol.tryFire(now,
@@ -155,42 +93,60 @@ export class ArenaScene extends Phaser.Scene {
           this.player.y + Math.sin(angle) * MUZZLE_OFFSET,
           angle);
       }
-      for (const walker of this.walkers.getChildren() as Walker[]) walker.pursue(this.player);
+      const nav = this.city.nav;
+      nav.setTarget(this.player);
+      for (const walker of this.walkers.getChildren() as Walker[]) {
+        if (!walker.isDead) walker.pursue(nav.waypoint(walker, this.player, WALKER_RADIUS));
+      }
       this.director.update(now);
     }
 
-    this.updateHud(now);
+    this.hud.update(this.hudState(now));
   }
 
-  private updateHud(now: number): void {
+  /** E near the closed gate: pay for it once, or say why not. */
+  private tryOpenGate(): void {
+    const gate = this.city.gate;
+    if (this.run.isOver || gate.isOpen || !gate.isWithinReach(this.player)) return;
+    if (!this.run.spend(GATE_COST)) {
+      this.showNotice(`NOT ENOUGH COINS: the gate costs ${GATE_COST}, you have ${this.run.coinBalance}`, 'warn');
+      return;
+    }
+    this.city.openGate();
+    this.showNotice(`GATE OPEN: -${GATE_COST} coins. The Narrow Alleys are open.`, 'info');
+  }
+
+  private showNotice(text: string, tone: NoticeTone): void {
+    this.notice = { text, tone, until: this.time.now + NOTICE_MS };
+  }
+
+  private hudState(now: number): HudState {
     const director = this.director;
     const seconds = Math.ceil(director.intermissionLeftMs(now) / 1000);
-    const status = {
-      intermission: `next wave in ${seconds}`,
-      active: `walkers left ${director.remaining}`,
-      complete: 'all waves cleared',
-      stopped: 'run over',
-    }[director.phase];
-
-    // Only re-render the texts when they change.
-    const hud = `WASD move | mouse aim | LMB fire\nHP ${this.player.health}/${PLAYER_MAX_HP}  ` +
-      `speed ${Math.round(this.player.speed)} px/s\n` +
-      `WAVE ${director.waveNumber}/${director.waveCount}  ${status}  coins ${this.coins}`;
-    if (hud !== this.lastHud) {
-      this.lastHud = hud;
-      this.debugText.setText(hud);
-    }
-
-    const banner = {
-      intermission: `WAVE ${director.waveNumber}\n${seconds}`,
-      active: '',
-      complete: `ALL WAVES CLEARED\n${this.coins} coins`,
-      stopped: '',
-    }[director.phase];
-    if (banner !== this.lastBanner) {
-      this.lastBanner = banner;
-      this.bannerText.setText(banner);
-    }
+    const left = director.remaining;
+    const gate = this.city.gate;
+    const canBuyGate = !this.run.isOver && !gate.isOpen && gate.isWithinReach(this.player);
+    const showNotice = !this.run.isOver && now < this.notice.until;
+    return {
+      health: this.player.health,
+      maxHealth: PLAYER_MAX_HP,
+      wave: director.waveNumber,
+      waveCount: director.waveCount,
+      waveStatus: {
+        intermission: `next wave in ${seconds}`,
+        active: `${left} walker${left === 1 ? '' : 's'} left`,
+        complete: 'all waves cleared',
+        stopped: 'run over',
+      }[director.phase],
+      coins: this.run.coinBalance,
+      weapon: this.pistol.name,
+      elapsedMs: this.run.survivalMs(now),
+      banner: director.phase === 'intermission' ? `WAVE ${director.waveNumber}\n${seconds}` : '',
+      district: districtAt(this.player).name,
+      prompt: canBuyGate ? `[E] open the alley gate: ${GATE_COST} coins` : '',
+      notice: showNotice ? this.notice.text : '',
+      noticeTone: this.notice.tone,
+    };
   }
 
   private onBulletHitsWalker(a: unknown, b: unknown): void {
@@ -204,29 +160,49 @@ export class ArenaScene extends Phaser.Scene {
 
   private onWalkerTouchesPlayer(a: unknown, b: unknown): void {
     const walker = (a instanceof Walker ? a : b) as Walker;
-    if (walker.isDead) return;
+    if (walker.isDead || this.run.isOver) return;
     // Fires every step the two overlap; the player's invulnerability window turns that into
     // one hit per touch.
     if (!this.player.takeDamage(walker.contactDamage, this.time.now)) return;
-    this.cameras.main.shake(120, 0.006);
-    if (this.player.isDead) this.onPlayerDeath();
+    if (this.profile.settings.screenShake) this.cameras.main.shake(120, 0.006);
+    if (this.player.isDead) this.endRun('died');
   }
 
-  private onPlayerDeath(): void {
+  /** Freeze the city, bank the high score, and show the summary. Runs once per run. */
+  private endRun(outcome: RunOutcome): void {
+    if (this.run.isOver) return;
+    const now = this.time.now;
+    this.run.end(outcome, now);
     this.director.stop();
+    // A cleared run leaves the player standing; stop it where it is.
+    this.player.setVelocity(0, 0).setAlpha(1);
     for (const walker of this.walkers.getChildren() as Walker[]) walker.halt();
-    this.add
-      // Above centre: the camera keeps the player in the middle of the screen.
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 140, 'YOU DIED\npress R to restart', {
-        fontFamily: 'monospace', fontSize: '40px', color: '#c8d6c0', align: 'center',
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(20);
-    this.input.keyboard?.once('keydown-R', () => this.scene.restart());
+
+    const stats = this.run.stats(now);
+    const newHighScore = stats.coins > this.profile.highScore;
+    if (newHighScore) {
+      this.profile.highScore = stats.coins;
+      saveProfile(this.profile);
+    }
+    this.gameOver = new GameOverScreen(this, {
+      outcome,
+      stats,
+      waveCount: this.director.waveCount,
+      highScore: this.profile.highScore,
+      newHighScore,
+      screenShake: this.profile.settings.screenShake,
+    });
+
+    // The scene's keyboard plugin drops these listeners on shutdown, so a restart starts clean.
+    const keyboard = this.input.keyboard;
+    keyboard?.once('keydown-R', () => this.scene.restart());
+    keyboard?.on('keydown-ONE', () => this.toggleScreenShake());
   }
 
-  private addBlock([x, y, width, height]: Block, color: number): Phaser.GameObjects.Rectangle {
-    return this.add.rectangle(x + width / 2, y + height / 2, width, height, color);
+  private toggleScreenShake(): void {
+    const settings = this.profile.settings;
+    settings.screenShake = !settings.screenShake;
+    saveProfile(this.profile);
+    this.gameOver?.setScreenShake(settings.screenShake);
   }
 }
