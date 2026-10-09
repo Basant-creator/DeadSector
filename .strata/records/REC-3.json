@@ -1,0 +1,57 @@
+{
+  "id": "REC-3",
+  "schemaVersion": "0.1.0",
+  "title": "Movement speed normalized in all eight directions",
+  "intent": "Player moves at 180 px/s with WASD, diagonals included",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/Player.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "headless E2E with puppeteer",
+      "description": "speed was 180.00 in all eight directions and 127.28 per axis on diagonals",
+      "confidence": "VERIFIED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "220094aa8cfb886d773cad2cd464ba833d244810",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Normalize the input vector before scaling by PLAYER_SPEED so diagonal speed stays 180 px/s instead of about 254",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Player.updateMovement",
+    "PLAYER_SPEED"
+  ],
+  "status": "UNKNOWN",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791540896081,
+  "updatedAt": 1791540896081
+}

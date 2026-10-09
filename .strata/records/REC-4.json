@@ -1,0 +1,56 @@
+{
+  "id": "REC-4",
+  "schemaVersion": "0.1.0",
+  "title": "Physics world bounds match the arena",
+  "intent": "Let the player reach the whole 2400x1600 arena",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "headless E2E with puppeteer",
+      "description": "player reached both outer walls at x 46 and x 2354",
+      "confidence": "VERIFIED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "220094aa8cfb886d773cad2cd464ba833d244810",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Call physics.world.setBounds with the arena size, because Arcade world bounds default to the 1280x720 canvas and would act as invisible walls",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "ArenaScene.create"
+  ],
+  "status": "UNKNOWN",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791540896774,
+  "updatedAt": 1791540896774
+}

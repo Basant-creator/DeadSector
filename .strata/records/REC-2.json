@@ -1,0 +1,62 @@
+{
+  "id": "REC-2",
+  "schemaVersion": "0.1.0",
+  "title": "Aim re-projects the pointer every frame",
+  "intent": "Keep the player facing the cursor, independent of movement, even while the camera scrolls under a stationary mouse",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/Player.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "headless E2E with puppeteer",
+      "description": "aim matched the cursor within 0.003 rad while the camera scrolled under a still mouse",
+      "confidence": "VERIFIED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "220094aa8cfb886d773cad2cd464ba833d244810",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Compute aim from cameras.main.getWorldPoint(pointer.x, pointer.y) every frame, not from pointer.worldX or worldY, which only refresh on mouse events",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Sprite rotation follows the cursor only, never the movement direction",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Player.updateAim"
+  ],
+  "status": "UNKNOWN",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791540895337,
+  "updatedAt": 1791540895337
+}

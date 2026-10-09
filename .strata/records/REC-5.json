@@ -1,0 +1,54 @@
+{
+  "id": "REC-5",
+  "schemaVersion": "0.1.0",
+  "title": "Phaser pinned to 3.x",
+  "intent": "Build DEAD SECTOR on Phaser 3 as specified",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "package.json",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "501f70e",
+      "description": "dependencies were pinned in this commit",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Keep phaser on ^3.x because npm latest is Phaser 4, so an unpinned install or upgrade would move to a different major version",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Keep TypeScript on ~6.0 to match the official create-vite vanilla-ts template rather than the 7.x native port",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [],
+  "status": "UNKNOWN",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791540897497,
+  "updatedAt": 1791540897497
+}
