@@ -1,0 +1,67 @@
+{
+  "id": "REC-11",
+  "schemaVersion": "0.1.0",
+  "title": "One reward per enemy, however many pellets land",
+  "intent": "A shotgun blast must not pay twice for one kill",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/Enemy.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "enemies.test.mjs",
+      "description": "six pellets into a 20 HP Runner in one step landed 3 hits, one death, 6 coins and one kill",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "a613d4ac49f32bc528b992bd729984712eb2ba0b",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Rewards come only from ENEMY_DIED, emitted once in Enemy.die and listened to with once; takeDamage ignores a dead enemy and onBulletHitsEnemy skips it, so later pellets pass on",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Enemy.die",
+    "Enemy.takeDamage",
+    "ENEMY_DIED"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "Uncommitted on branch weapons-and-enemies at time of record"
+  },
+  "createdAt": 1791572857729,
+  "updatedAt": 1791572857729
+}

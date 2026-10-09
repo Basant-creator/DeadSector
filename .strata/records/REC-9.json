@@ -1,0 +1,99 @@
+{
+  "id": "REC-9",
+  "schemaVersion": "0.1.0",
+  "title": "Restart leaves nothing of the previous run",
+  "intent": "Every restart starts a clean run with no stale timers, listeners, enemies, bullets or purchases",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/run/Run.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/combat/Arsenal.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/City.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "HUD text cache as a scene field initialised only at declaration",
+      "status": "failed",
+      "failureReason": "the scene object survives scene.restart, so the cache carried the previous run text into the next one",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "runs.test.mjs",
+      "description": "listener, timer, tween, collider, body and display-object counts after three restarts matched a fresh load, including a restart mid-wave with bullets in flight and pending hit-flash timers",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "arsenal.test.mjs",
+      "description": "after restart one listener each for E, Q, 1, 2, 3 and none for R; pistol only, lockers and gate reset",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "a613d4ac49f32bc528b992bd729984712eb2ba0b",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "create() reassigns every per-run field, because Phaser reuses the scene object across scene.restart",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "WaveDirector keeps no timers or scene listeners and is driven by update(now), so shutdown leaves nothing of it; per-enemy listeners are removed when the enemy is destroyed",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Key listeners go on the scene keyboard plugin, which removes them all on shutdown; nothing listens on game-level emitters",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "ArenaScene.create",
+    "WaveDirector.update"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791572856559,
+  "updatedAt": 1791572856559
+}

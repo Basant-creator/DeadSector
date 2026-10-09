@@ -1,0 +1,63 @@
+{
+  "id": "REC-12",
+  "schemaVersion": "0.1.0",
+  "title": "World bounds match the city (supersedes the size in REC-4)",
+  "intent": "Let the player reach the whole 2880x1920 city",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/cityMap.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "a613d4a",
+      "description": "replaced the 2400x1600 arena with the 2880x1920 city",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "city.test.mjs",
+      "description": "world and camera bounds 2880x1920; camera clamps at scroll 0,0 and 1600,1200",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Call physics.world.setBounds and camera.setBounds with WORLD_WIDTH x WORLD_HEIGHT from cityMap, because Arcade world bounds default to the 1280x720 canvas and would act as invisible walls",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "ArenaScene.create",
+    "WORLD_WIDTH",
+    "WORLD_HEIGHT"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "REC-4 records the same constraint for the old 2400x1600 arena; the CLI has no way to mark it superseded"
+  },
+  "createdAt": 1791572858325,
+  "updatedAt": 1791572858325
+}

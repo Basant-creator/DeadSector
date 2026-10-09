@@ -1,0 +1,73 @@
+{
+  "id": "REC-7",
+  "schemaVersion": "0.1.0",
+  "title": "Coins: spendable balance separate from coins collected",
+  "intent": "Let the player spend coins on the gate and weapons without lowering their score",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/run/Run.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/ui/GameOverScreen.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "a613d4a",
+      "description": "introduced the split balance and collected total",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "city.test.mjs",
+      "description": "after buying the 60-coin gate, balance 0 and collected 60; five more kills gave balance 20 and collected 80",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Run.spend lowers only the balance; RunStats.coins, the end-screen Coins collected and the high score all use coins collected, which spending never lowers",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Rewards are frozen once the run is over; a kill by a bullet still in flight after death earns nothing",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Run.spend",
+    "Run.coinBalance",
+    "Run.stats"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "High score is the most coins collected in one run"
+  },
+  "createdAt": 1791572855386,
+  "updatedAt": 1791572855386
+}

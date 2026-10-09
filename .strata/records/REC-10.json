@@ -1,0 +1,81 @@
+{
+  "id": "REC-10",
+  "schemaVersion": "0.1.0",
+  "title": "Authored waves: 1-5 Walkers, newcomers one per wave from 6",
+  "intent": "Introduce Runner, Brute and Elite gradually without changing the five Walker waves the user authored",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/waves/waves.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/enemies.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "enemies.test.mjs",
+      "description": "a full 10-wave run spawned exactly each authored wave, 110 kills and 632 coins with each reward once; banners named Runner, Brute and Elite on waves 6, 7 and 8",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "a613d4ac49f32bc528b992bd729984712eb2ba0b",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Waves 1-5 stay the user-authored Walker waves of 6, 8, 9, 9 and 9",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Each new enemy type first appears alone in its own wave, in small numbers (Runner 3 in wave 6, Brute 1 in wave 7, Elite 1 in wave 8), spread through the spawn order; the first wave announces no newcomer",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Enemy and weapon stats live only in the ENEMIES and WEAPONS tables; Enemy and Weapon read them",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "WAVES",
+    "newKinds",
+    "spawnOrder",
+    "ENEMIES",
+    "WEAPONS"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "Waves 6-10 added; uncommitted on branch weapons-and-enemies at time of record"
+  },
+  "createdAt": 1791572857161,
+  "updatedAt": 1791572857161
+}

@@ -1,0 +1,93 @@
+{
+  "id": "REC-6",
+  "schemaVersion": "0.1.0",
+  "title": "Map clearance: solids touch or stand 64 px apart",
+  "intent": "Let every enemy type, the 40 px Brute included, path anywhere in the city without being routed into a gap it cannot fit through",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/world/cityMap.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/NavGrid.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/enemies.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "Dumpsters centred in 3-tile yards, a car one tile off the north wall, gate barriers one tile short of the district wall",
+      "status": "failed",
+      "failureReason": "each left a 32 px lane; the nav grid treats every open tile as passable, so the flow field routed a Brute into the lane under the dumpster at tiles 34-35 row 13 and it stayed wedged at (1134, 468) for 25 s",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "test_run",
+      "reference": "city.test.mjs",
+      "description": "headless E2E pinch check over all 58 static bodies found 0 gaps under 64 px after the fix (6 before)",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "enemies.test.mjs",
+      "description": "one Brute from each of the 15 spawn points reached the player with the gate open, slowest 64.5 s, none inside a solid; all four types passed the house-gap, car, dumpster and alley-through-gate routes",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "a613d4ac49f32bc528b992bd729984712eb2ba0b",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Two solids in cityMap either touch or stand at least 64 px (two tiles) apart, diagonals included, because the nav grid has no clearance model and the widest enemy body is 40 px",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Keep every enemy radius at or below 20 px unless the nav grid gains a clearance model",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Every solid is tile-aligned and at least 32 px thick, and every weapon bulletSpeed stays below 1920 px/s, so no bullet crosses a solid in one 60 Hz step",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "SOLIDS",
+    "NavGrid",
+    "WALL_PENALTY"
+  ],
+  "status": "UNKNOWN",
+  "result": {
+    "status": "success",
+    "summary": "Moved 3 dumpsters against house walls, the north-street car against the map edge, and made both gate barriers flush with the district wall; uncommitted on branch weapons-and-enemies at time of record"
+  },
+  "createdAt": 1791572824651,
+  "updatedAt": 1791572824651
+}

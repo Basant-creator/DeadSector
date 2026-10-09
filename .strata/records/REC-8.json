@@ -1,0 +1,71 @@
+{
+  "id": "REC-8",
+  "schemaVersion": "0.1.0",
+  "title": "Spawn only where an enemy can reach the player",
+  "intent": "Keep locked areas empty without per-area rules, so a wave can always be cleared",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/NavGrid.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "a613d4a",
+      "description": "added canSpawnAt and the flow-field reachability check",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "city.test.mjs",
+      "description": "0 of 15 spawns landed in the Narrow Alleys before the gate opened, 6 of 17 after",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "WaveDirector uses a spawn point only when canSpawnAt(point) is true, wired to nav.isReachable on the flow field toward the player; nothing spawns behind the closed alley gate",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "A spawn point is also at least 400 px from the player, off screen with a 64 px margin, and 48 px from any living enemy",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "WaveDirector.pickSpawnPoint",
+    "NavGrid.isReachable"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791572855972,
+  "updatedAt": 1791572855972
+}
