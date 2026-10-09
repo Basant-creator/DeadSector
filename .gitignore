@@ -6,3 +6,9 @@ dist
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# Strata: the database is a rebuildable cache; .strata/records/ is committed.
+.strata/strata.db*
+
+# Claude Code: personal, machine-specific settings (the Strata hook needs a local strata install).
+.claude/settings.local.json

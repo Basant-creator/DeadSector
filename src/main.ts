@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from './config';
+import { ArenaScene } from './scenes/ArenaScene';
 import { BootScene } from './scenes/BootScene';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -22,7 +23,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene],
+  scene: [BootScene, ArenaScene],
 };
 
 export default new Phaser.Game(config);
