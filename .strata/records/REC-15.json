@@ -1,0 +1,65 @@
+{
+  "id": "REC-15",
+  "schemaVersion": "0.1.0",
+  "title": "Enemy body radius limit raised to under 32 px (supersedes REC-6 constraint 2)",
+  "intent": "Allow a 26 px Giant while keeping every enemy able to path through the city",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/enemies.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/NavGrid.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/cityMap.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "0930c1f",
+      "description": "added the 26 px Giant",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "giant.test.mjs",
+      "description": "a Giant from each of the 15 spawn points reached the player with the gate open, slowest 71.5 s, none inside a solid",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Enemy radius stays under 32 px, since the narrowest gaps are 64 px and the nav grid has no clearance model; each radius in use must be walked to the player from every spawn point before it ships",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "ENEMIES"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "REC-6 still says at most 20 px; the CLI cannot amend it"
+  },
+  "createdAt": 1791575231480,
+  "updatedAt": 1791575231480
+}

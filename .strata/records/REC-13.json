@@ -1,0 +1,99 @@
+{
+  "id": "REC-13",
+  "schemaVersion": "0.1.0",
+  "title": "Giant encounter: rare, announced, one at a time, never near the player",
+  "intent": "Make the Giant a rare boss from wave 8 that the player is warned about and that never arrives on top of them",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/giantRules.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/enemies.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/ui/Hud.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "0930c1f",
+      "description": "added the Giant encounter",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "giant.test.mjs",
+      "description": "8.02% over 200k eligible rolls and none before wave 8; with the chance forced to 1, one Giant in wave 8 and none more through wave 10; closest arrival 916 px with the player on each spawn point; 60 coins and one kill, once",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Each wave from GIANT.encounter.firstWave rolls once as it starts, against GIANT.encounter.chancePerWave; both are data, not code",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "No Giant is rolled while one is alive or announced, so at most one is ever in play",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "A Giant is announced warningMs ahead and arrives at least minSpawnDistance (600 px) from the player and off screen",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The Giant is extra to its wave; the final wave does not clear while a Giant is alive or announced",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Full-run tests that assert exact coin totals must set GIANT.encounter.chancePerWave to 0",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "GIANT",
+    "rollsGiant",
+    "WaveDirector.rollForGiant",
+    "WaveDirector.trySpawnGiant"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791575230203,
+  "updatedAt": 1791575230203
+}

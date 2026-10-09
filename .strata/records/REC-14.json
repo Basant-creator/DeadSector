@@ -1,0 +1,91 @@
+{
+  "id": "REC-14",
+  "schemaVersion": "0.1.0",
+  "title": "Giant attacks: telegraphed, avoidable, self-cleaning",
+  "intent": "Give the Giant three attacks that are dangerous but always fair, and leave nothing behind when it dies or the run resets",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/Giant.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/giantRules.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Enemy.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "Debris wind-up signalled only by the Giant pulsing",
+      "status": "failed",
+      "failureReason": "nothing showed on the ground where it would land until the throw; the test of a ground telegraph during every wind-up failed, so the wind-up now draws a reticle that tracks the player and locks at the throw",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "0930c1f",
+      "description": "added the Giant and its attacks",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "giant.test.mjs",
+      "description": "each attack ran its phases on time, took 35, 40 and 25 when standing still and 0 when dodged with the keyboard; death mid-throw, run end mid-wind-up and restart mid-charge left no rock, telegraph, timer or extra object",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Every attack runs wind-up, active and recovery, and each wind-up shows its danger zone on the ground and is long enough to leave it at 180 px/s (slam 100 px in 900 ms, charge 40 px in 800 ms, debris 70 px in a 900 ms flight)",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Giant attacks use no Phaser timers; they are timed from now in act, and halt, die and destroy drop the attack, the rock and the telegraph",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Every hit on the player goes through ArenaScene.damagePlayer, so the invulnerability window and run end apply to attacks as to contact",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Giant.act",
+    "Giant.beginAttack",
+    "Giant.clearAttack",
+    "ArenaScene.damagePlayer"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1791575230813,
+  "updatedAt": 1791575230813
+}
