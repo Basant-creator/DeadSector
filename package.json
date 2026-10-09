@@ -1,0 +1,20 @@
+{
+  "name": "dead-sector",
+  "private": true,
+  "version": "0.0.0",
+  "description": "DEAD SECTOR - single-player top-down zombie shooter for the browser",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}
