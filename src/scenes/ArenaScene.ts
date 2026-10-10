@@ -8,6 +8,7 @@ import { Enemy, type EnemyContext } from '../entities/Enemy';
 import { ENEMIES, type EnemyKind } from '../entities/enemies';
 import { Giant } from '../entities/Giant';
 import { muzzleOffset, Player, PLAYER_MAX_HP } from '../entities/Player';
+import { Ambience } from '../fx/Ambience';
 import { CameraFx } from '../fx/CameraFx';
 import { Fx } from '../fx/Fx';
 import { HitStop } from '../fx/HitStop';
@@ -50,6 +51,7 @@ export class ArenaScene extends Phaser.Scene {
   private sfx!: Sfx;
   private cameraFx!: CameraFx;
   private hitStop!: HitStop;
+  private ambience!: Ambience;
   /** When each enemy last showed hit feedback; hits closer together than this share it. */
   private hitFeedbackAt = new WeakMap<Enemy, number>();
   private gameOver: GameOverScreen | null = null;
@@ -101,12 +103,7 @@ export class ArenaScene extends Phaser.Scene {
     this.purchasables = this.createPurchasables();
 
     this.physics.add.collider(this.enemies, walls);
-    this.physics.add.collider(this.arsenal.bullets, walls, (b) => {
-      const bullet = b as Bullet;
-      bullet.kill();
-      this.fx.impact(bullet.x, bullet.y);
-      this.sfx.play('sfx-impact', { volume: 0.35 });
-    });
+    this.physics.add.collider(this.arsenal.bullets, walls, (b) => this.bulletHitsSolid(b as Bullet));
     this.physics.add.overlap(this.arsenal.bullets, this.enemies, (a, b) => this.onBulletHitsEnemy(a, b));
     this.physics.add.overlap(this.player, this.enemies, (a, b) => this.onEnemyTouchesPlayer(a, b));
 
@@ -119,6 +116,7 @@ export class ArenaScene extends Phaser.Scene {
     this.cameraFx = new CameraFx(camera, this.profile.settings.shake);
 
     this.fx = new Fx(this);
+    this.ambience = new Ambience(this, this.city.lights, this.sfx);
     this.hud = new Hud(this);
     this.enemyContext = {
       player: this.player,
@@ -167,6 +165,7 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     this.fx.update(now);
+    this.ambience.update(now);
     this.hud.update(this.hudState(now));
   }
 
@@ -197,6 +196,27 @@ export class ArenaScene extends Phaser.Scene {
     this.player.recoil(now, feel.recoilMs);
     this.cameraFx.kick(angle + Math.PI, feel.kickPx);
     if (feel.shake) this.cameraFx.shake(feel.shake.intensity, feel.shake.ms, now);
+  }
+
+  /**
+   * A bullet hit a solid. The bullet stops as before; what it hit decides the answer: metal
+   * sparks and pings (a car's alarm may go off), brick and concrete puff dust.
+   */
+  private bulletHitsSolid(bullet: Bullet): void {
+    bullet.kill();
+    // The bullet's centre stops short of the surface: step ahead along its path into what it hit.
+    let hit = null;
+    for (let d = 4; d <= 16 && !hit; d += 4) {
+      hit = this.city.solidAt(bullet.x + Math.cos(bullet.rotation) * d, bullet.y + Math.sin(bullet.rotation) * d);
+    }
+    if (hit && (hit.kind === 'car' || hit.kind === 'dumpster' || hit.kind === 'gate')) {
+      this.fx.impact(bullet.x, bullet.y);
+      this.sfx.play('sfx-ping', { volume: 0.45, detune: hit.kind === 'car' ? 0 : -600 });
+      if (hit.kind === 'car') this.ambience.carHit(hit.index, this.time.now);
+    } else {
+      this.fx.dust(bullet.x, bullet.y);
+      this.sfx.play('sfx-impact', { volume: 0.35 });
+    }
   }
 
   /** An enemy died: once per enemy, from its single death event. */

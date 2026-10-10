@@ -25,12 +25,16 @@ export function createPropArt(scene: Phaser.Scene): void {
     locker(scene, id);
   }
   spark(scene);
+  dust(scene);
+  paper(scene);
   bloodSpray(scene);
   splats(scene);
   rock(scene);
   gateShutter(scene);
   hudIcons(scene);
   gradient(scene, 'fx-light', 128, 128, [[0, 1], [0.35, 0.45], [1, 0]]);
+  // Steam: a soft grey wisp, faint even at full alpha.
+  gradient(scene, 'fx-steam', 48, 48, [[0, 0.5], [0.6, 0.18], [1, 0]], '170,176,184');
   vignette(scene);
 }
 
@@ -77,6 +81,28 @@ function spark(scene: Phaser.Scene): void {
     return a;
   });
   addSheet(scene, 'fx-spark', frames, S);
+}
+
+/** Concrete dust kicked up where a bullet hits a wall: grey, no glow. */
+function dust(scene: Phaser.Scene): void {
+  const frames = [0, 1, 2].map((t) => {
+    const a = new PixelArt(10, 10);
+    const spread = 1 + t * 1.4;
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1.3], [1.3, 0], [-1.3, 0.4]]) {
+      a.rect(5 + dx * spread, 5 + dy * spread, t === 0 ? 2 : 1, t === 0 ? 2 : 1, t === 2 ? 0x5a5c60 : 0x8a8c90);
+    }
+    return a;
+  });
+  addSheet(scene, 'fx-dust', frames, S);
+}
+
+/** A scrap of litter that drifts along the streets. */
+function paper(scene: Phaser.Scene): void {
+  const a = new PixelArt(4, 3);
+  a.rect(0, 0, 4, 3, 0x8a8a7e);
+  a.px(3, 0, 0x6a6a60);
+  a.px(1, 1, 0x5a5a52);
+  addImage(scene, 'fx-paper', a, S);
 }
 
 /** Blood thrown along +x from a hit. */

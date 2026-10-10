@@ -1,12 +1,15 @@
 import Phaser from 'phaser';
-import { renderCity } from '../art/cityArt';
+import { type LightSprite, renderCity } from '../art/cityArt';
 import type { Point } from '../waves/WaveDirector';
 import {
-  GATE_RECT, MAP_COLS, MAP_ROWS, PLAYER_SPAWN, SOLIDS, TILE, type TileRect, tileRectToWorld, WEAPON_LOCKERS,
+  GATE_RECT, MAP_COLS, MAP_ROWS, PLAYER_SPAWN, type SolidKind, SOLIDS, TILE, type TileRect, tileRectToWorld, WEAPON_LOCKERS,
 } from './cityMap';
 import { Gate } from './Gate';
 import { NavGrid } from './NavGrid';
 import { WeaponLocker } from './WeaponLocker';
+
+/** Marks the gate's tiles in the solid lookup. */
+const GATE_TILE = -2;
 
 /**
  * Builds the city from `cityMap` into a scene: solid geometry in one static group, the alley
@@ -22,16 +25,22 @@ export class City {
   readonly gate: Gate;
   readonly nav: NavGrid;
   readonly lockers: readonly WeaponLocker[];
+  /** The light pools in the scene, for `Ambience` to animate. */
+  readonly lights: readonly LightSprite[];
+  /** Per tile: the index into SOLIDS of the solid covering it, GATE_TILE, or -1 for open ground. */
+  private readonly solidTiles = new Int16Array(MAP_COLS * MAP_ROWS).fill(-1);
 
   constructor(scene: Phaser.Scene) {
-    renderCity(scene);
+    this.lights = renderCity(scene);
 
     this.walls = scene.physics.add.staticGroup();
     this.nav = new NavGrid(MAP_COLS, MAP_ROWS, TILE);
-    for (const { rect } of SOLIDS) {
+    SOLIDS.forEach(({ rect }, index) => {
       this.walls.add(this.addRect(scene, rect).setVisible(false));
       this.nav.setBlocked(rect, true);
-    }
+      this.markTiles(rect, index);
+    });
+    this.markTiles(GATE_RECT, GATE_TILE);
 
     this.gate = new Gate(scene, GATE_RECT);
     this.walls.add(this.gate.bars);
@@ -42,6 +51,23 @@ export class City {
 
   get spawn(): Point {
     return PLAYER_SPAWN;
+  }
+
+  /**
+   * What solid covers the point (x, y), if any: its kind ('gate' for the gate) and, for map
+   * solids, its index into SOLIDS. Lets presentation tell a car from a wall where a bullet hit.
+   */
+  solidAt(x: number, y: number): { kind: SolidKind | 'gate'; index: number } | null {
+    const c = Math.floor(x / TILE);
+    const r = Math.floor(y / TILE);
+    if (c < 0 || r < 0 || c >= MAP_COLS || r >= MAP_ROWS) return null;
+    const index = this.solidTiles[r * MAP_COLS + c];
+    if (index === GATE_TILE) return this.gate.isOpen ? null : { kind: 'gate', index };
+    return index < 0 ? null : { kind: SOLIDS[index].kind, index };
+  }
+
+  private markTiles([c, r, w, h]: TileRect, value: number): void {
+    for (let row = r; row < r + h; row++) for (let col = c; col < c + w; col++) this.solidTiles[row * MAP_COLS + col] = value;
   }
 
   /** Open the alley gate: out of the physics world and out of the navigation grid. */

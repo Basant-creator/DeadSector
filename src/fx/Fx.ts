@@ -57,9 +57,14 @@ export class Fx {
     light.alpha = 0.5;
   }
 
-  /** A bullet stopped by a wall. */
+  /** A bullet stopped by metal (a car, a dumpster, the gate): sparks. */
   impact(x: number, y: number): void {
     this.spawn('fx-spark', x, y, 140, 3, true).sprite.setBlendMode(Phaser.BlendModes.ADD);
+  }
+
+  /** A bullet stopped by brick or concrete: a puff of grey dust, no glow. */
+  dust(x: number, y: number): void {
+    this.spawn('fx-dust', x, y, 200, 3, true);
   }
 
   /** A bullet travelling at *angle* hit an enemy: a white pop where it struck, blood behind. */

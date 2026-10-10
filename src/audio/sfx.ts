@@ -22,6 +22,8 @@ interface Layer {
   readonly highpass?: number;
   /** Vibrato depth (fraction of pitch) and rate (Hz), for voices. */
   readonly vibrato?: [depth: number, rate: number];
+  /** Volume wobble: depth (0-1) and rate (Hz), for wind and other slow movement. */
+  readonly tremolo?: [depth: number, rate: number];
 }
 
 interface Recipe {
@@ -29,7 +31,12 @@ interface Recipe {
   readonly layers: readonly Layer[];
   /** Saturation: higher is punchier and louder. */
   readonly drive: number;
+  /** Rendered to loop seamlessly: the tail is crossfaded into the start. */
+  readonly loop?: boolean;
 }
+
+/** Length of the crossfade that hides a looping sound's seam. */
+const LOOP_FADE_SECONDS = 0.25;
 
 export const SFX: Readonly<Record<string, Recipe>> = {
   'sfx-pistol': { seconds: 0.22, drive: 1.6, layers: [
@@ -75,6 +82,35 @@ export const SFX: Readonly<Record<string, Recipe>> = {
   'sfx-whoosh': { seconds: 0.5, drive: 1.1, layers: [
     { kind: 'noise', decay: 0.2, attack: 0.15, gain: 0.55, lowpass: 0.07 },
   ] },
+  // Props that answer gunfire.
+  'sfx-ping': { seconds: 0.35, drive: 1.2, layers: [
+    { kind: 'noise', decay: 0.006, gain: 0.45, highpass: 0.6 },
+    { kind: 'sine', from: 1900, to: 1650, decay: 0.12, gain: 0.35 },
+    { kind: 'sine', from: 3100, to: 2900, decay: 0.07, gain: 0.16 },
+  ] },
+  'sfx-alarm': { seconds: 1.6, drive: 1.3, layers: [
+    { kind: 'square', from: 820, to: 820, decay: 4, attack: 0.02, gain: 0.22, lowpass: 0.2, vibrato: [0.18, 5] },
+  ] },
+  // Ambience: quiet, slow, and never in the way of the fight.
+  'amb-wind': { seconds: 8, drive: 1, loop: true, layers: [
+    { kind: 'noise', decay: 1e6, gain: 0.9, lowpass: 0.012, tremolo: [0.55, 0.25] },
+    { kind: 'noise', decay: 1e6, gain: 0.25, lowpass: 0.05, tremolo: [0.8, 0.375] },
+  ] },
+  'amb-siren': { seconds: 3.4, drive: 1, layers: [
+    { kind: 'sine', from: 700, to: 700, decay: 1.6, attack: 0.7, gain: 0.5, lowpass: 0.06, vibrato: [0.22, 0.6] },
+  ] },
+  'amb-moan': { seconds: 2.2, drive: 1.2, layers: [
+    { kind: 'saw', from: 105, to: 80, decay: 0.8, attack: 0.35, gain: 0.5, lowpass: 0.03, vibrato: [0.05, 3] },
+  ] },
+  'amb-clang': { seconds: 1.6, drive: 1, layers: [
+    { kind: 'sine', from: 410, to: 405, decay: 0.5, gain: 0.4, lowpass: 0.15 },
+    { kind: 'sine', from: 1130, to: 1120, decay: 0.3, gain: 0.2, lowpass: 0.15 },
+    { kind: 'noise', decay: 0.01, gain: 0.2, lowpass: 0.1 },
+  ] },
+  'amb-crow': { seconds: 0.45, drive: 1.6, layers: [
+    { kind: 'square', from: 950, to: 650, decay: 0.08, attack: 0.01, gain: 0.3, lowpass: 0.15 },
+    { kind: 'noise', decay: 0.06, gain: 0.2, lowpass: 0.2 },
+  ] },
   'sfx-crash': { seconds: 0.6, drive: 2, layers: [
     { kind: 'noise', decay: 0.15, gain: 0.9, lowpass: 0.1 },
     { kind: 'sine', from: 110, to: 38, decay: 0.12, gain: 0.8 },
@@ -91,7 +127,16 @@ export function createSfx(scene: Phaser.Scene): void {
   for (const [key, recipe] of Object.entries(SFX)) {
     const length = Math.ceil(recipe.seconds * ctx.sampleRate);
     const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    render(recipe, buffer.getChannelData(0), ctx.sampleRate, rand);
+    if (recipe.loop) {
+      // Render past the end, then fade that tail into the start so the loop has no seam.
+      const fade = Math.ceil(LOOP_FADE_SECONDS * ctx.sampleRate);
+      const long = new Float32Array(length + fade);
+      render(recipe, long, ctx.sampleRate, rand);
+      for (let i = 0; i < fade; i++) long[i] = long[i] * (i / fade) + long[length + i] * (1 - i / fade);
+      buffer.getChannelData(0).set(long.subarray(0, length));
+    } else {
+      render(recipe, buffer.getChannelData(0), ctx.sampleRate, rand);
+    }
     scene.cache.audio.add(key, buffer);
   }
 }
@@ -105,7 +150,8 @@ function render(recipe: Recipe, out: Float32Array, rate: number, rand: () => num
     for (let i = 0; i < out.length; i++) {
       const t = i / rate;
       const attack = layer.attack ? Math.min(1, t / layer.attack) : 1;
-      const env = attack * Math.exp(-t / layer.decay);
+      const wobble = layer.tremolo ? 1 - layer.tremolo[0] * (0.5 + 0.5 * Math.sin(2 * Math.PI * layer.tremolo[1] * t)) : 1;
+      const env = attack * Math.exp(-t / layer.decay) * wobble;
       if (env < 1e-4 && t > (layer.attack ?? 0)) break;
       let s: number;
       if (layer.kind === 'noise') {
@@ -144,7 +190,7 @@ function mulberry(seed: number): () => number {
 
 /** Shortest gap between two plays of the same effect, so a crowd never becomes a wall of noise. */
 const MIN_GAP_MS: Readonly<Record<string, number>> = {
-  'sfx-hit': 35, 'sfx-impact': 45, 'sfx-death': 40, 'sfx-crash': 80,
+  'sfx-hit': 35, 'sfx-impact': 45, 'sfx-death': 40, 'sfx-crash': 80, 'sfx-ping': 60, 'sfx-alarm': 1500,
 };
 /** Above this many sounds at once, only weapons and the player's own hurt still play. */
 const MAX_VOICES = 20;
