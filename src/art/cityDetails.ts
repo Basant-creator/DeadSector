@@ -1,4 +1,4 @@
-import { SOLIDS, TILE, type TileRect } from '../world/cityMap';
+import { INDUSTRIAL, SOLIDS, TILE, type TileRect } from '../world/cityMap';
 import { WORLD_ART_SCALE } from './layers';
 import { PALETTE } from './palette';
 import { type PixelArt, shade } from './pixels';
@@ -11,7 +11,11 @@ import { type PixelArt, shade } from './pixels';
 const T = TILE / WORLD_ART_SCALE;
 
 /** Manholes and alley vents, in tiles: drawn on the ground, and steam rises from them. */
-export const VENTS: readonly (readonly [number, number])[] = [[14, 31], [36, 27], [52, 31], [24, 2], [46, 56], [74, 20], [83, 34], [66, 52]];
+export const VENTS: readonly (readonly [number, number])[] = [
+  [14, 31], [36, 27], [52, 31], [24, 2], [46, 56], [74, 20], [83, 34], [66, 52],
+  // Industrial Facility.
+  [56, 62], [26, 69], [74, 80],
+];
 
 /** Landmarks: things to steer by, each tied to the solid it sits on or the ground it marks. */
 export const LANDMARKS = {
@@ -45,10 +49,23 @@ export function drawFacade(a: PixelArt, rect: TileRect, rand: () => number): voi
   const y = r * T;
   const pw = w * T;
   const bottom = y + h * T;
-  const alley = c >= 65;
-  const store = !alley && r + h === STOREFRONT_ROW;
-  const depth = store ? 8 : 6;
+  const yard = r >= INDUSTRIAL.area[1];
+  const alley = !yard && c >= 65;
+  const store = !alley && !yard && r + h === STOREFRONT_ROW;
+  const depth = store || yard ? 8 : 6;
   const top = bottom - depth;
+  if (yard) {
+    // Corrugated cladding with roller doors and a lamp over each.
+    a.rect(x + 1, top, pw - 2, depth - 1, 0x34383c);
+    for (let i = x + 2; i < x + pw - 2; i += 2) a.rect(i, top + 1, 1, depth - 2, 0x2c3034);
+    a.rect(x + 1, top, pw - 2, 1, 0x1c1e22);
+    for (let i = x + 6; i < x + pw - 14; i += 22) {
+      a.rect(i, top + 2, 10, depth - 3, 0x4a4e54);
+      for (let k = top + 3; k < bottom - 1; k += 2) a.rect(i, k, 10, 1, 0x3e4248);
+      a.px(i + 5, top + 1, PALETTE.amber);
+    }
+    return;
+  }
   const wall = alley ? 0x2a2428 : store ? 0x3a3236 : 0x34333a;
   a.rect(x + 1, top, pw - 2, depth - 1, wall);
   a.rect(x + 1, top, pw - 2, 1, shade(wall, -0.4)); // the roof's edge casts a line

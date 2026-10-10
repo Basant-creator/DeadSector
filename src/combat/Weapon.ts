@@ -1,16 +1,16 @@
 import Phaser from 'phaser';
 import type { Bullet } from './Bullet';
-import type { WeaponDef } from './weapons';
+import type { GunDef, WeaponDef } from './weapons';
 
 /**
- * Any weapon: its `def` sets the fire rate, the bullets per shot and how they spread. Every
- * weapon fires from the same bullet pool, so this is the only firing code there is.
+ * Any gun, the mech's cannon included: its `def` sets the fire rate, the bullets per shot and how
+ * they spread. Every gun fires from the same bullet pool, so this is the only firing code there is.
  */
-export class Weapon {
-  readonly def: WeaponDef;
+export class Weapon<D extends GunDef = WeaponDef> {
+  readonly def: D;
   private nextShotAt = 0;
 
-  constructor(def: WeaponDef) {
+  constructor(def: D) {
     this.def = def;
   }
 
@@ -36,11 +36,16 @@ export class Weapon {
       const fan = pellets > 1 ? (i / (pellets - 1) - 0.5) * spread : 0;
       const deviation = jitter > 0 ? Phaser.Math.FloatBetween(-jitter, jitter) : 0;
       const a = angle + fan + deviation;
-      bullet.fire(muzzleX - Math.cos(a) * lead, muzzleY - Math.sin(a) * lead, a, bulletSpeed, lifetimeMs, damage, this.def.id);
+      bullet.fire(muzzleX - Math.cos(a) * lead, muzzleY - Math.sin(a) * lead, a, bulletSpeed, lifetimeMs, damage, this.def.id, this.def.tracer);
       fired++;
     }
     if (fired === 0) return false;
     this.nextShotAt = now + 1000 / fireRate;
     return true;
+  }
+
+  /** A hit-stop held the fight for *ms*: the next shot waits for it too. */
+  shiftTimers(ms: number): void {
+    this.nextShotAt += ms;
   }
 }

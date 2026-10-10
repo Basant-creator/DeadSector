@@ -3,13 +3,16 @@
  * are in `ENEMIES.giant` with every other enemy's.
  *
  * Every attack runs wind-up, active, recovery. The wind-up is the telegraph and is always
- * long enough for the player (180 px/s) to leave the danger zone it shows:
+ * long enough for the player on foot (230 px/s, reached in 50 ms) to leave the danger zone it
+ * shows, and for the mech (140 px/s, src/mech/mechRules.ts) too:
  * - slam: hits within `radius` (140 px) of the Giant's centre. The player is never closer than
- *   26 + 14 = 40 px, so at most 100 px gets them clear: 0.56 s of the 900 ms wind-up.
+ *   26 + 14 = 40 px, so at most 100 px gets them clear: 0.46 s of the 900 ms wind-up (the mech:
+ *   92 px, about 0.73 s).
  * - charge: the lane is locked when the wind-up starts. Leaving it takes a sidestep of
- *   26 + 14 = 40 px (0.22 s) in the 800 ms wind-up.
+ *   26 + 14 = 40 px (0.20 s) in the 800 ms wind-up (the mech: 48 px, about 0.42 s).
  * - debris: a reticle follows the player through the wind-up; the throw locks it as the landing
- *   spot, marked for the whole 900 ms flight. Leaving the 70 px impact circle takes 0.39 s.
+ *   spot, marked for the whole 900 ms flight. Leaving the 70 px impact circle takes 0.33 s (the
+ *   mech: about 0.58 s).
  */
 export type GiantAttackKind = 'slam' | 'charge' | 'debris';
 export type AttackPhase = 'windUp' | 'active' | 'recovery';

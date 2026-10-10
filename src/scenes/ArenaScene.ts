@@ -7,19 +7,21 @@ import { type WeaponDef, type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/we
 import { Enemy, type EnemyContext } from '../entities/Enemy';
 import { ENEMIES, type EnemyKind } from '../entities/enemies';
 import { Giant } from '../entities/Giant';
-import { muzzleOffset, Player, PLAYER_MAX_HP } from '../entities/Player';
+import { Mech, type MechState } from '../entities/Mech';
+import { muzzleOffset, Player, PLAYER_BODY_RADIUS, PLAYER_MAX_HP } from '../entities/Player';
 import { Ambience } from '../fx/Ambience';
 import { CameraFx } from '../fx/CameraFx';
 import { Fx } from '../fx/Fx';
 import { HitStop } from '../fx/HitStop';
+import { MECH } from '../mech/mechRules';
 import { loadProfile, nextShakeLevel, type Profile, saveProfile } from '../run/Profile';
 import { Run, type RunOutcome } from '../run/Run';
 import { GameOverScreen } from '../ui/GameOverScreen';
-import { Hud, type HudState, type NoticeTone } from '../ui/Hud';
+import { Hud, type HudState, type MechHud, type NoticeTone } from '../ui/Hud';
 import { WaveDirector } from '../waves/WaveDirector';
 import { City } from '../world/City';
-import { districtAt, SPAWN_POINTS, WORLD_HEIGHT, WORLD_WIDTH } from '../world/cityMap';
-import { GATE_COST, GATE_REACH } from '../world/Gate';
+import { districtAt, MECH_BAY, SPAWN_POINTS, WORLD_HEIGHT, WORLD_WIDTH } from '../world/cityMap';
+import { FACILITY_GATE_COST, GATE_COST, GATE_REACH } from '../world/Gate';
 import type { Purchasable } from '../world/Purchasable';
 import { LOCKER_REACH } from '../world/WeaponLocker';
 
@@ -32,12 +34,25 @@ const HIT_FEEDBACK_MS = 50;
 /** Death sounds pitched by size: small bodies higher, big ones lower, in cents. */
 const DEATH_DETUNE: Readonly<Record<EnemyKind, number>> = { walker: 0, runner: 350, brute: -450, elite: -150, giant: -1000 };
 
-/** The city: a player and their weapons, waves of enemies, things to buy, a following camera. */
+/** The camera's follow: smooth enough that the shot kick eases back by itself. */
+const FOLLOW_LERP = 0.1;
+/** Enemies within this many px of the mech decide which side its pilot climbs out on. */
+const HATCH_DANGER_RANGE = 300;
+
+/**
+ * The city: a player and their weapons, waves of enemies, things to buy, the mech, a following
+ * camera.
+ */
 export class ArenaScene extends Phaser.Scene {
   // The scene object survives a restart, so create() reassigns every field: nothing of a run
   // may outlive it. Enemies, bullets, timers, tweens and listeners go with the scene's shutdown.
   private city!: City;
   private player!: Player;
+  /**
+   * One per run, waiting in its bay. While the player pilots it, the player is hidden inside and
+   * carried along, so everything that chases or targets the player chases the mech.
+   */
+  private mech!: Mech;
   private arsenal!: Arsenal;
   private enemies!: Phaser.GameObjects.Group;
   private director!: WaveDirector;
@@ -80,6 +95,8 @@ export class ArenaScene extends Phaser.Scene {
 
     this.player = new Player(this, this.city.spawn.x, this.city.spawn.y);
     this.physics.add.collider(this.player, walls);
+    this.mech = new Mech(this, MECH_BAY.x, MECH_BAY.y);
+    this.physics.add.collider(this.mech, walls);
 
     this.arsenal = new Arsenal(this);
     this.player.holdWeapon(this.arsenal.current.def);
@@ -106,13 +123,15 @@ export class ArenaScene extends Phaser.Scene {
     this.physics.add.collider(this.arsenal.bullets, walls, (b) => this.bulletHitsSolid(b as Bullet));
     this.physics.add.overlap(this.arsenal.bullets, this.enemies, (a, b) => this.onBulletHitsEnemy(a, b));
     this.physics.add.overlap(this.player, this.enemies, (a, b) => this.onEnemyTouchesPlayer(a, b));
+    // Only while piloted does the mech have a body: it shoulders enemies aside and they claw at it.
+    this.physics.add.collider(this.mech, this.enemies, (a, b) => this.onEnemyTouchesMech(a, b));
 
     const camera = this.cameras.main;
     // Clamped to the city: the camera never shows past its edge.
     camera.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     // roundPixels must stay off: Phaser floors the scroll after lerping, which swallows the final
     // sub-pixel steps and parks the camera up to 9 px off-centre with lerp 0.1.
-    camera.startFollow(this.player, false, 0.1, 0.1);
+    camera.startFollow(this.player, false, FOLLOW_LERP, FOLLOW_LERP);
     this.cameraFx = new CameraFx(camera, this.profile.settings.shake);
 
     this.fx = new Fx(this);
@@ -127,7 +146,8 @@ export class ArenaScene extends Phaser.Scene {
       hitStop: (ms) => this.hitStop.trigger(ms, this.time.now),
     };
     // The scene's keyboard plugin drops these listeners on shutdown, so restarts never stack them.
-    this.onKey('keydown-E', () => this.tryPurchase());
+    this.onKey('keydown-E', (event) => this.interact(event));
+    this.onKey('keydown-SPACE', () => this.stomp());
     this.onKey('keydown-Q', () => this.switchWeapon(() => this.arsenal.cycle()));
     for (const id of WEAPON_IDS) {
       this.onKey(`keydown-${SLOT_KEYS[WEAPONS[id].slot - 1]}`, () => this.selectWeapon(id));
@@ -149,8 +169,9 @@ export class ArenaScene extends Phaser.Scene {
     const held = this.hitStop.update(now);
 
     if (!this.run.isOver && !held) {
-      this.player.update(now);
-      if (this.input.activePointer.leftButtonDown()) {
+      if (this.player.isInVehicle) this.updateMech(now);
+      else this.player.update(now);
+      if (!this.player.isInVehicle && this.input.activePointer.leftButtonDown()) {
         const angle = this.player.aimAngle;
         const weapon = this.arsenal.current.def;
         const muzzle = muzzleOffset(weapon);
@@ -201,6 +222,123 @@ export class ArenaScene extends Phaser.Scene {
     if (feel.shake) this.cameraFx.shake(feel.shake.intensity, feel.shake.ms, now);
   }
 
+  /** One frame in the mech: walk, aim, fire, carry the player along, and let them out if it is spent. */
+  private updateMech(now: number): void {
+    const mech = this.mech;
+    mech.update(now);
+    if (this.input.activePointer.leftButtonDown()) {
+      const shot = mech.fire(now, this.arsenal.bullets);
+      if (shot) {
+        const feel = WEAPON_FEEL.mech;
+        this.fx.muzzle(shot.x, shot.y, shot.angle, 'mech');
+        this.sfx.play(feel.sound, { volume: 0.85 });
+        this.cameraFx.kick(shot.angle + Math.PI, feel.kickPx);
+      }
+    }
+    this.player.followVehicle(mech.x, mech.y);
+    this.syncPilot(now);
+  }
+
+  /** The player climbs into the mech: hidden inside it, and the camera follows the mech. */
+  private enterMech(): void {
+    this.player.enterVehicle();
+    this.player.followVehicle(this.mech.x, this.mech.y);
+    this.cameras.main.startFollow(this.mech, false, FOLLOW_LERP, FOLLOW_LERP);
+    this.sfx.play('sfx-mech-on');
+  }
+
+  /**
+   * If the player is inside a mech that is no longer piloted (climbed out, out of energy,
+   * destroyed), put them back on their feet. Called after everything that can change the mech.
+   */
+  private syncPilot(now: number): void {
+    if (!this.player.isInVehicle || this.mech.isPiloted) return;
+    this.ejectPilot(now, this.mech.status);
+  }
+
+  /**
+   * Out of the mech, alive, with the health they went in with: untouchable for a moment, and
+   * anything crowding the hatch is shoved clear. The one way out, whatever the reason.
+   */
+  private ejectPilot(now: number, why: MechState): void {
+    const { x, y } = this.mech;
+    const spot = this.hatchSpot();
+    this.player.exitVehicle(spot.x, spot.y, now, MECH.eject.invulnerableMs);
+    this.cameras.main.startFollow(this.player, false, FOLLOW_LERP, FOLLOW_LERP);
+    for (const enemy of this.enemies.getChildren() as Enemy[]) {
+      if (enemy.isDead) continue;
+      if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) > MECH.eject.pushRadius + enemy.radius) continue;
+      enemy.knockback(Phaser.Math.Angle.Between(x, y, enemy.x, enemy.y), MECH.eject.push, now);
+    }
+    if (why === 'destroyed') {
+      this.fx.explosion(x, y);
+      this.sfx.play('sfx-explosion');
+      this.cameraFx.shake(IMPACT.shake.heavy.intensity, IMPACT.shake.heavy.ms, now);
+      if (!this.run.isOver) this.hitStop.trigger(IMPACT.hitStop.giantDeath, now);
+      this.showNotice('MECH DESTROYED. You were thrown clear: move!', 'warn');
+    } else if (why === 'depleted') {
+      this.sfx.play('sfx-mech-off');
+      this.showNotice('MECH OUT OF ENERGY. You are on foot again.', 'warn');
+    } else {
+      this.sfx.play('sfx-mech-off', { volume: 0.6 });
+      this.showNotice('Out of the mech. Press E beside it to climb back in.', 'info');
+    }
+  }
+
+  /**
+   * Where the pilot lands: beside the mech on open ground, on the side away from the danger
+   * around it (enemies weighted by how hard they hit and how close they are); where the mech
+   * stands if every side is blocked. Its centre is always open: the mech's body was there.
+   */
+  private hatchSpot(): { x: number; y: number } {
+    const { x, y } = this.mech;
+    let ax = 0;
+    let ay = 0;
+    for (const enemy of this.enemies.getChildren() as Enemy[]) {
+      const d = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+      if (enemy.isDead || d > HATCH_DANGER_RANGE || d === 0) continue;
+      ax += ((x - enemy.x) / d) * (enemy.contactDamage / d);
+      ay += ((y - enemy.y) / d) * (enemy.contactDamage / d);
+    }
+    const away = ax === 0 && ay === 0 ? this.mech.rotation + Math.PI : Math.atan2(ay, ax);
+    const reach = MECH.radius + PLAYER_BODY_RADIUS + 2;
+    for (const turn of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, Math.PI]) {
+      const spot = { x: x + Math.cos(away + turn) * reach, y: y + Math.sin(away + turn) * reach };
+      if (this.city.nav.isClear(this.mech, spot, PLAYER_BODY_RADIUS)) return spot;
+    }
+    return { x, y };
+  }
+
+  /**
+   * Space, in the mech: a shockwave round its feet. Hurts and throws back every enemy within
+   * reach that the mech could see, then lets the pilot out if that was the last of the energy.
+   */
+  private stomp(): void {
+    if (this.run.isOver || !this.player.isInVehicle) return;
+    const now = this.time.now;
+    const result = this.mech.stomp(now);
+    if (result === 'energy') this.showNotice(`NOT ENOUGH ENERGY: a stomp needs ${MECH.stomp.energy}`, 'warn');
+    if (result !== 'ok') return;
+    const { x, y } = this.mech;
+    const { radius, damage, knockback } = MECH.stomp;
+    this.fx.shockwave(x, y, radius);
+    this.sfx.play('sfx-stomp');
+    this.cameraFx.shake(IMPACT.shake.rockLand.intensity, IMPACT.shake.rockLand.ms, now);
+    let hits = 0;
+    // A copy: an enemy dying mid-loop leaves the group.
+    for (const enemy of this.enemies.getChildren().slice() as Enemy[]) {
+      if (enemy.isDead || Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) > radius + enemy.radius) continue;
+      if (!this.city.nav.isClear(this.mech, enemy, 0)) continue;
+      const angle = Phaser.Math.Angle.Between(x, y, enemy.x, enemy.y);
+      enemy.takeDamage(damage);
+      enemy.knockback(angle, knockback, now);
+      this.fx.blood(enemy.x, enemy.y, angle, enemy.kind === 'giant');
+      hits++;
+    }
+    if (hits > 0) this.sfx.play('sfx-hit', { volume: 0.9 });
+    this.syncPilot(now);
+  }
+
   /**
    * A bullet hit a solid. The bullet stops as before; what it hit decides the answer: metal
    * sparks and pings (a car's alarm may go off), brick and concrete puff dust.
@@ -238,6 +376,7 @@ export class ArenaScene extends Phaser.Scene {
   private afterHitStop(ms: number): void {
     this.physics.world.resume();
     this.player.shiftTimers(ms);
+    this.mech.shiftTimers(ms);
     this.arsenal.shiftTimers(ms);
     for (const enemy of this.enemies.getChildren() as Enemy[]) enemy.shiftTimers(ms);
   }
@@ -270,9 +409,14 @@ export class ArenaScene extends Phaser.Scene {
     this.showNotice(notice, 'info');
   }
 
-  /** The gate and one item per weapon locker, all bought through `tryPurchase`. */
+  /**
+   * Both gates, one item per weapon locker, and the mech (brought online once, boarded again for
+   * free after climbing out), all bought through `tryPurchase`.
+   */
   private createPurchasables(): Purchasable[] {
     const gate = this.city.gate;
+    const facilityGate = this.city.facilityGate;
+    const mech = this.mech;
     const gateItem: Purchasable = {
       position: gate.centre,
       reach: GATE_REACH,
@@ -283,6 +427,47 @@ export class ArenaScene extends Phaser.Scene {
       deliver: () => {
         this.city.openGate();
         return `GATE OPEN: -${GATE_COST} coins. The Narrow Alleys are open.`;
+      },
+    };
+    const facilityGateItem: Purchasable = {
+      position: facilityGate.centre,
+      reach: GATE_REACH,
+      cost: FACILITY_GATE_COST,
+      noun: 'the facility gate',
+      action: 'open the facility gate',
+      isAvailable: () => !facilityGate.isOpen,
+      deliver: () => {
+        this.city.openGate(facilityGate);
+        return `GATE OPEN: -${FACILITY_GATE_COST} coins. The Industrial Facility is open.`;
+      },
+    };
+    const mechItem: Purchasable = {
+      position: mech,
+      reach: MECH.reach,
+      cost: MECH.cost,
+      noun: 'the mech',
+      action: 'bring the mech online',
+      isAvailable: () => mech.status === 'dormant',
+      deliver: () => {
+        mech.activate(this.time.now);
+        this.city.mechBay.showForSale(false);
+        this.enterMech();
+        return `MECH ONLINE: -${MECH.cost} coins. Its energy drains, faster while firing. SPACE stomps.`;
+      },
+    };
+    const boardItem: Purchasable = {
+      position: mech,
+      reach: MECH.reach,
+      cost: 0,
+      noun: 'the mech',
+      get action() {
+        return `climb into the mech (energy ${Math.ceil(mech.energy)}%)`;
+      },
+      isAvailable: () => mech.canBoard,
+      deliver: () => {
+        mech.board(this.time.now);
+        this.enterMech();
+        return 'BACK IN THE MECH.';
       },
     };
     const lockerItems = this.city.lockers.map((locker): Purchasable => {
@@ -302,11 +487,12 @@ export class ArenaScene extends Phaser.Scene {
         },
       };
     });
-    return [gateItem, ...lockerItems];
+    return [gateItem, facilityGateItem, mechItem, boardItem, ...lockerItems];
   }
 
-  /** The nearest item still for sale within reach of the player, if any. */
+  /** The nearest item still for sale within reach of the player, if any. Nothing from inside the mech. */
   private purchasableInReach(): Purchasable | undefined {
+    if (this.player.isInVehicle) return undefined;
     let best: Purchasable | undefined;
     let bestDistance = Infinity;
     for (const item of this.purchasables) {
@@ -321,8 +507,22 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   /**
-   * E: buy what is in reach, or say why not. The one place coins are spent: the item stops
-   * being available as it is delivered, so a second press, or a held key, buys nothing more.
+   * E: in the mech, climb out; on foot, buy (or board) what is in reach. A held key's repeats do
+   * nothing, so holding E can never board and climb straight back out.
+   */
+  private interact(event: KeyboardEvent): void {
+    if (this.run.isOver || event.repeat) return;
+    if (!this.player.isInVehicle) {
+      this.tryPurchase();
+      return;
+    }
+    const now = this.time.now;
+    if (this.mech.climbOut(now)) this.syncPilot(now);
+  }
+
+  /**
+   * Buy what is in reach, or say why not. The one place coins are spent: the item stops being
+   * available as it is delivered, so a second press buys nothing more.
    */
   private tryPurchase(): void {
     if (this.run.isOver) return;
@@ -336,7 +536,8 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private selectWeapon(id: WeaponId): void {
-    if (this.run.isOver) return;
+    // In the mech, its cannon is the only gun.
+    if (this.run.isOver || this.player.isInVehicle) return;
     const def = WEAPONS[id];
     if (!this.arsenal.owns(id)) {
       this.showNotice(`NOT OWNED: the ${def.name} is sold at a weapon locker for ${def.cost} coins`, 'warn');
@@ -346,7 +547,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private switchWeapon(change: () => boolean): void {
-    if (this.run.isOver || !change()) return;
+    if (this.run.isOver || this.player.isInVehicle || !change()) return;
     this.player.holdWeapon(this.arsenal.current.def);
   }
 
@@ -382,13 +583,26 @@ export class ArenaScene extends Phaser.Scene {
         ? [`WAVE ${director.waveNumber}`, ...(fresh.length > 0 ? [`NEW: ${fresh.join(', ')}`] : []), `${seconds}`].join('\n')
         : '',
       district: districtAt(this.player).name,
-      prompt: item ? `[E] ${item.action}: ${item.cost} coins` : '',
+      prompt: item ? `[E] ${item.action}${item.cost > 0 ? `: ${item.cost} coins` : ''}` : '',
       notice: showNotice ? this.notice.text : '',
       noticeTone: this.notice.tone,
       boss: boss && !boss.isDead ? { name: boss.def.name, health: boss.health, maxHealth: boss.def.maxHp } : null,
       // Pulses twice a second until the Giant arrives.
       warning: warningLeft > 0 ? `WARNING: A GIANT IS COMING (${Math.ceil(warningLeft / 1000)})` : '',
       warningBright: Math.floor(now / 250) % 2 === 0,
+      mech: this.player.isInVehicle ? this.mechHud(now) : null,
+    };
+  }
+
+  private mechHud(now: number): MechHud {
+    const mech = this.mech;
+    return {
+      health: mech.health,
+      maxHealth: MECH.maxHp,
+      energy: mech.energy,
+      maxEnergy: MECH.energy.max,
+      stompCooldownS: Math.ceil(mech.stompCooldownLeft(now) / 1000),
+      stompAffordable: mech.energy >= MECH.stomp.energy,
     };
   }
 
@@ -413,6 +627,33 @@ export class ArenaScene extends Phaser.Scene {
     if (bullet.weapon === 'pistol' || giant) this.cameraFx.shake(IMPACT.shake.hit.intensity, IMPACT.shake.hit.ms, now);
   }
 
+  /** Enemies claw at the mech's hull; its own short invulnerability spaces the hits. */
+  private onEnemyTouchesMech(a: unknown, b: unknown): void {
+    const enemy = (a instanceof Enemy ? a : b) as Enemy;
+    if (enemy.isDead) return;
+    this.damageMech(enemy.contactDamage, enemy instanceof Giant);
+  }
+
+  /**
+   * A hit on the mech's hull: the pilot is untouched. Small hits only clank (a hit-stop every
+   * time a crowd landed one would stutter the whole fight); the Giant's land with a hit-stop. If
+   * the hull gives out, the pilot is thrown clear.
+   */
+  private damageMech(amount: number, heavy: boolean): boolean {
+    const now = this.time.now;
+    if (this.run.isOver || !this.mech.takeDamage(amount, now)) return false;
+    const shake = heavy ? IMPACT.shake.heavy : IMPACT.shake.playerHurt;
+    this.cameraFx.shake(shake.intensity, shake.ms, now);
+    this.fx.impact(this.mech.x, this.mech.y);
+    this.sfx.play('sfx-clank', { volume: heavy ? 1 : 0.8 });
+    if (!this.mech.isPiloted) {
+      this.syncPilot(now);
+      return true;
+    }
+    if (heavy) this.hitStop.trigger(IMPACT.hitStop.giantAttack, now);
+    return true;
+  }
+
   private onEnemyTouchesPlayer(a: unknown, b: unknown): void {
     const enemy = (a instanceof Enemy ? a : b) as Enemy;
     if (enemy.isDead) return;
@@ -426,6 +667,8 @@ export class ArenaScene extends Phaser.Scene {
    * whether it landed; the invulnerability window after a hit absorbs the rest.
    */
   private damagePlayer(amount: number, heavy = false): boolean {
+    // In the mech, the hull takes it: the Giant's slam, charge and debris included.
+    if (this.player.isInVehicle) return this.damageMech(amount, heavy);
     const now = this.time.now;
     if (this.run.isOver || !this.player.takeDamage(amount, now)) return false;
     const shake = heavy ? IMPACT.shake.heavy : IMPACT.shake.playerHurt;
@@ -450,6 +693,7 @@ export class ArenaScene extends Phaser.Scene {
     this.director.stop();
     // A cleared run leaves the player standing; stop it where it is.
     this.player.setVelocity(0, 0).setAlpha(1);
+    this.mech.halt();
     for (const enemy of this.enemies.getChildren() as Enemy[]) enemy.halt();
 
     const stats = this.run.stats(now);

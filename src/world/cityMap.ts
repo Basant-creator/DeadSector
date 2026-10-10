@@ -1,6 +1,6 @@
 /**
  * The city: a Residential Block in the west, joined to the Narrow Alleys in the east by one
- * gate in the brick wall between them.
+ * gate in the brick wall between them, and to the Industrial Facility in the south by another.
  *
  * Authored on a 32 px tile grid. Every solid covers whole tiles, so the navigation grid
  * matches the collision geometry exactly. Every solid is at least one tile (32 px) thick:
@@ -16,14 +16,14 @@ import type { LockerPlacement } from './WeaponLocker';
 
 export const TILE = 32;
 export const MAP_COLS = 90;
-export const MAP_ROWS = 60;
+export const MAP_ROWS = 85;
 export const WORLD_WIDTH = MAP_COLS * TILE;
 export const WORLD_HEIGHT = MAP_ROWS * TILE;
 
 /** [col, row, cols, rows] in tiles. */
 export type TileRect = readonly [number, number, number, number];
 
-export type SolidKind = 'wall' | 'building' | 'car' | 'barrier' | 'dumpster';
+export type SolidKind = 'wall' | 'building' | 'car' | 'barrier' | 'dumpster' | 'container' | 'tank';
 
 export interface Solid {
   readonly kind: SolidKind;
@@ -37,9 +37,18 @@ export interface District {
 
 export const RESIDENTIAL: District = { name: 'Residential Block', area: [1, 1, 63, 58] };
 export const ALLEYS: District = { name: 'Narrow Alleys', area: [65, 1, 24, 58] };
+export const INDUSTRIAL: District = { name: 'Industrial Facility', area: [1, 60, 88, 24] };
 
 /** The one way into the Narrow Alleys, set into the district wall at column 64. */
 export const GATE_RECT: TileRect = [64, 28, 1, 3];
+/**
+ * The one way into the Industrial Facility, set into the wall along row 59 at the foot of the
+ * avenue south of the spawn.
+ */
+export const FACILITY_GATE_RECT: TileRect = [45, 59, 3, 1];
+
+/** Where the mech stands in its bay, in the middle of the facility yard. */
+export const MECH_BAY: Point = { x: 1488, y: 2368 };
 
 export const PLAYER_SPAWN: Point = { x: 46 * TILE, y: 30 * TILE };
 
@@ -64,6 +73,9 @@ export const SOLIDS: readonly Solid[] = [
     // District wall, open only where the gate is (rows 28-30).
     [64, 1, 1, 27],
     [64, 31, 1, 28],
+    // The facility's wall along row 59, open only where its gate is (columns 45-47).
+    [1, 59, 44, 1],
+    [48, 59, 41, 1],
   ]),
 
   // Residential Block: six lots of houses between a wide main street (rows 24-35), a north
@@ -100,6 +112,22 @@ export const SOLIDS: readonly Solid[] = [
   ...solids('dumpster', [
     [75, 5, 1, 2], [73, 24, 1, 2], [73, 42, 1, 2], [78, 30, 2, 1],
   ]),
+
+  // Industrial Facility: warehouses west and east, a hangar behind the mech bay, fuel tanks, and
+  // shipping containers stacked round an open yard where the mech has room to fight.
+  ...solids('building', [
+    [3, 63, 12, 7], [3, 73, 12, 8],
+    [38, 78, 17, 6],
+    [60, 70, 12, 7], [76, 63, 10, 9],
+  ]),
+  ...solids('container', [
+    [18, 63, 2, 5], [22, 63, 2, 4], [18, 71, 6, 2], [18, 77, 2, 5],
+    [28, 64, 6, 2], [28, 69, 2, 6], [32, 74, 4, 2], [32, 79, 4, 2],
+    [76, 75, 6, 2], [84, 75, 2, 6], [62, 80, 6, 2],
+  ]),
+  ...solids('tank', [
+    [60, 63, 4, 4], [66, 63, 4, 4],
+  ]),
 ];
 
 /** Walkable ground drawn under the residential houses. */
@@ -124,6 +152,9 @@ export const SPAWN_POINTS: readonly Point[] = [
   { x: 2384, y: 560 }, { x: 2384, y: 1600 },
   { x: 2656, y: 1280 },
   { x: 2752, y: 64 }, { x: 2752, y: 1856 },
+  // Industrial Facility.
+  { x: 64, y: 2288 }, { x: 768, y: 2560 },
+  { x: 2240, y: 1984 }, { x: 2800, y: 2464 },
 ];
 
 export function tileRectToWorld([col, row, cols, rows]: TileRect): { x: number; y: number; width: number; height: number } {
@@ -131,5 +162,6 @@ export function tileRectToWorld([col, row, cols, rows]: TileRect): { x: number; 
 }
 
 export function districtAt(p: Point): District {
+  if (p.y >= INDUSTRIAL.area[1] * TILE) return INDUSTRIAL;
   return p.x >= ALLEYS.area[0] * TILE ? ALLEYS : RESIDENTIAL;
 }

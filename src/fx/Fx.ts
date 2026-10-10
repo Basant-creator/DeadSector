@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { LAYER, WORLD_ART_SCALE } from '../art/layers';
 import { PALETTE } from '../art/palette';
 import { muzzleKey } from '../art/props';
-import type { WeaponId } from '../combat/weapons';
+import type { GunId } from '../combat/weapons';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config';
 import { MAP_COLS, MAP_ROWS, TILE } from '../world/cityMap';
 
@@ -14,12 +14,14 @@ interface Live {
   /** Fades out over its life when true, from `alpha`. */
   fade: boolean;
   alpha: number;
+  /** Scale from and to over its life, easing out; null keeps the scale it was given. */
+  grow: { from: number; to: number } | null;
 }
 
 /** Most short-lived effect sprites alive at once; beyond it the oldest is reused. */
 const POOL_SIZE = 64;
 /** How far the muzzle light reaches, as a scale of the 128 px light texture. */
-const MUZZLE_LIGHT: Readonly<Record<WeaponId, number>> = { pistol: 1, shotgun: 1.7, rifle: 0.8 };
+const MUZZLE_LIGHT: Readonly<Record<GunId, number>> = { pistol: 1, shotgun: 1.7, rifle: 0.8, mech: 1.4 };
 const HURT_FLASH_MS = 220;
 
 /**
@@ -48,7 +50,7 @@ export class Fx {
       .setScrollFactor(0).setDepth(LAYER.hurtFlash).setAlpha(0).setVisible(false);
   }
 
-  muzzle(x: number, y: number, angle: number, weapon: WeaponId): void {
+  muzzle(x: number, y: number, angle: number, weapon: GunId): void {
     const s = this.spawn(muzzleKey(weapon), x, y, weapon === 'rifle' ? 50 : 70, 2, false);
     s.sprite.setOrigin(0, 0.5).setRotation(angle).setBlendMode(Phaser.BlendModes.ADD);
     // A brief warm light on the ground and walls around the shot.
@@ -93,6 +95,39 @@ export class Fx {
     this.hurtAt = this.scene.time.now;
   }
 
+  /** The mech's stomp: a ring racing out to *radius*, dust kicked up round the feet. */
+  shockwave(x: number, y: number, radius: number): void {
+    const ring = this.spawn('fx-ring', x, y, 320, 1, true);
+    ring.grow = { from: 0.2, to: radius / 64 };
+    ring.alpha = 0.9;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const d = 30 + Math.random() * 12;
+      this.spawn('fx-dust', x + Math.cos(angle) * d, y + Math.sin(angle) * d, 360, 3, true).sprite.setScale(1.6);
+    }
+    const light = this.spawn('fx-light', x, y, 200, 1, true);
+    light.sprite.setBlendMode(Phaser.BlendModes.ADD).setTint(PALETTE.amber).setScale(radius / 64);
+    light.alpha = 0.35;
+  }
+
+  /** The mech blew up: a fireball of sparks, a flash and a cloud of dust. */
+  explosion(x: number, y: number): void {
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+      const d = Math.random() * 22;
+      const s = this.spawn('fx-spark', x + Math.cos(angle) * d, y + Math.sin(angle) * d, 300 + i * 40, 3, true);
+      s.sprite.setBlendMode(Phaser.BlendModes.ADD).setScale(2.4 + Math.random());
+    }
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      this.spawn('fx-dust', x + Math.cos(angle) * 20, y + Math.sin(angle) * 20, 500, 3, true).sprite.setScale(2.2);
+    }
+    const light = this.spawn('fx-light', x, y, 380, 1, true);
+    light.sprite.setBlendMode(Phaser.BlendModes.ADD).setTint(PALETTE.fireMid).setScale(2.6);
+    light.alpha = 0.7;
+    this.stamp(x, y, 4 + Math.floor(Math.random() * 2), 0.5, 1.6);
+  }
+
   update(now: number): void {
     for (const live of this.pool) {
       if (!live.sprite.visible) continue;
@@ -103,6 +138,7 @@ export class Fx {
       }
       live.sprite.setFrame(Math.min(live.frames - 1, Math.floor(t * live.frames)));
       if (live.fade) live.sprite.setAlpha(live.alpha * (1 - t * t));
+      if (live.grow) live.sprite.setScale(live.grow.from + (live.grow.to - live.grow.from) * (1 - (1 - t) * (1 - t)));
     }
     const h = (now - this.hurtAt) / HURT_FLASH_MS;
     const showHurt = h >= 0 && h < 1;
@@ -114,7 +150,9 @@ export class Fx {
     let live = this.pool.find((l) => !l.sprite.visible);
     if (!live) {
       if (this.pool.length < POOL_SIZE) {
-        live = { sprite: this.scene.add.sprite(0, 0, key).setDepth(LAYER.effects), startedAt: 0, durationMs: 0, frames: 1, fade: false, alpha: 1 };
+        live = {
+          sprite: this.scene.add.sprite(0, 0, key).setDepth(LAYER.effects), startedAt: 0, durationMs: 0, frames: 1, fade: false, alpha: 1, grow: null,
+        };
         this.pool.push(live);
       } else {
         live = this.pool[this.next];
@@ -123,7 +161,7 @@ export class Fx {
     }
     live.sprite.setTexture(key, 0).setPosition(x, y).setVisible(true).setAlpha(1).setRotation(0).setOrigin(0.5)
       .setScale(1).clearTint().setBlendMode(Phaser.BlendModes.NORMAL);
-    Object.assign(live, { startedAt: this.scene.time.now, durationMs, frames, fade, alpha: 1 });
+    Object.assign(live, { startedAt: this.scene.time.now, durationMs, frames, fade, alpha: 1, grow: null });
     return live;
   }
 

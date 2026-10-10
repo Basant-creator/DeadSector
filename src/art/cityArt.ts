@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
-  ALLEYS, GATE_RECT, LOTS, MAP_COLS, MAP_ROWS, type Solid, SOLIDS, TILE, type TileRect, WEAPON_LOCKERS,
+  ALLEYS, FACILITY_GATE_RECT, GATE_RECT, INDUSTRIAL, LOTS, MAP_COLS, MAP_ROWS, MECH_BAY, type Solid, SOLIDS, TILE, type TileRect,
+  WEAPON_LOCKERS,
 } from '../world/cityMap';
 import {
   damageGround, drawCrater, drawFacade, drawLandmarks, LANDMARKS, scatterRubble, solidIndexOf, VENTS,
@@ -12,10 +13,11 @@ import { addImage, PixelArt, seeded, shade } from './pixels';
 /**
  * The city's look, generated once at boot from the same map data the collision and navigation
  * use, so what is drawn solid is solid. Three layers at half resolution:
- * - ground: asphalt, sidewalks, concrete, dead lots, alley brick; markings, potholes, broken
- *   slabs, cracks, rubble, a blast crater, shadows. All flat: nothing on it looks walk-blocking;
- * - obstacles: roofs with façades and landmarks, walls, cars, dumpsters, barriers, each drawn
- *   strictly inside its collision rectangle;
+ * - ground: asphalt, sidewalks, concrete, dead lots, alley brick, the facility's slab yard;
+ *   markings, potholes, broken slabs, cracks, rubble, a blast crater, the mech bay, shadows. All
+ *   flat: nothing on it looks walk-blocking;
+ * - obstacles: roofs with façades and landmarks, walls, cars, dumpsters, barriers, shipping
+ *   containers and fuel tanks, each drawn strictly inside its collision rectangle;
  * - foreground: cables and lamp heads, drawn over the characters.
  * Plus a handful of coloured light pools; `Ambience` animates the few that flicker. Nothing here
  * is redrawn per frame.
@@ -62,6 +64,14 @@ export const CITY_LIGHTS: readonly CityLight[] = [
   light(centre(LANDMARKS.motel.rect).x, LANDMARKS.motel.rect[1] * TILE + 32, PALETTE.magenta, 100, 0.35, 'pulse', 2.2),
   light(centre(LANDMARKS.policeCar.rect).x, centre(LANDMARKS.policeCar.rect).y, 0xff3030, 70, 0.3, 'police', 0),
   light(centre(LANDMARKS.policeCar.rect).x, centre(LANDMARKS.policeCar.rect).y, 0x3060ff, 70, 0.3, 'police', 1),
+  // Industrial Facility: floodlights over the yard and the bay, a failing one by the tanks, and
+  // a warning beacon breathing over the mech.
+  light(MECH_BAY.x, MECH_BAY.y - 20, PALETTE.amber, 170, 0.3),
+  light(MECH_BAY.x, MECH_BAY.y - 60, PALETTE.cyan, 70, 0.3, 'pulse', 1.1),
+  light(1488, 2050, PALETTE.amber, 140, 0.25),
+  light(9 * TILE, 71 * TILE + 16, PALETTE.amber, 110, 0.3),
+  light(65 * TILE, 68 * TILE, PALETTE.amber, 110, 0.3, 'buzz', 6),
+  light(81 * TILE, 73 * TILE, PALETTE.amber, 110, 0.3),
 ];
 
 /** A light pool in the scene, with the light it shows, for `Ambience` to animate. */
@@ -96,10 +106,12 @@ export function renderCity(scene: Phaser.Scene): LightSprite[] {
   return lights;
 }
 
-type Material = 'asphalt' | 'sidewalk' | 'lot' | 'alley' | 'concrete';
+type Material = 'asphalt' | 'sidewalk' | 'lot' | 'alley' | 'concrete' | 'yard';
 
 /** The concrete pad in front of the gate, ringed by its barriers. */
 const GATE_PAD: TileRect = [56, 26, 8, 7];
+/** The mech bay's painted pad, centred on the mech. */
+const BAY_PAD: TileRect = [42, 70, 9, 7];
 
 function inRect([c, r, w, h]: TileRect, col: number, row: number): boolean {
   return col >= c && col < c + w && row >= r && row < r + h;
@@ -111,7 +123,8 @@ function materials(): Material[] {
   for (let row = 0; row < MAP_ROWS; row++) {
     for (let col = 0; col < MAP_COLS; col++) {
       const i = row * MAP_COLS + col;
-      if (col >= ALLEYS.area[0]) out[i] = 'alley';
+      if (row >= INDUSTRIAL.area[1]) out[i] = 'yard';
+      else if (col >= ALLEYS.area[0]) out[i] = 'alley';
       else if (inRect(GATE_PAD, col, row)) out[i] = 'concrete';
       else if (isLot(col, row)) out[i] = 'lot';
       else {
@@ -139,7 +152,11 @@ function ground(): PixelArt {
       else if (m === 'sidewalk') color = x % T === 0 || y % T === 0 ? p.concreteSeam : n < 0.12 ? p.concreteLight : p.concrete;
       else if (m === 'lot') color = n < 0.14 ? p.dirtLight : n < 0.24 ? p.dirtDark : p.dirt;
       else if (m === 'concrete') color = (x % (2 * T) === 0 || y % (2 * T) === 0) ? p.concreteSeam : n < 0.1 ? p.concrete : 0x3e4147;
-      else {
+      else if (m === 'yard') {
+        // Big poured slabs, two tiles a side, weathered unevenly.
+        const slab = (Math.floor(x / (2 * T)) * 7 + Math.floor(y / (2 * T)) * 13) % 5;
+        color = x % (2 * T) === 0 || y % (2 * T) === 0 ? 0x1e2024 : n < 0.1 ? 0x34373c : slab === 0 ? 0x2a2c30 : 0x2e3135;
+      } else {
         // Staggered brick paving, 8 x 4.
         const row = Math.floor(y / 4);
         const joint = y % 4 === 0 || (x + (row % 2) * 4) % 8 === 0;
@@ -200,6 +217,30 @@ function ground(): PixelArt {
     a.px(x - 1, y - 1, 0x4a6a78);
   }
 
+  // The facility yard: oil, rust streaks and tyre marks; lanes painted from the gate to the bay.
+  for (let i = 0; i < 70; i++) {
+    const x = rand() * W;
+    const y = rand() * H;
+    if (onMaterial(x, y, 'yard')) a.ellipse(x, y, 3 + rand() * 7, 2 + rand() * 4, rand() < 0.7 ? 0x111215 : 0x3a2418, 100);
+  }
+  for (let i = 0; i < 90; i++) {
+    let x = rand() * W;
+    let y = rand() * H;
+    if (!onMaterial(x, y, 'yard')) continue;
+    let dir = rand() * Math.PI * 2;
+    for (let s = 0; s < 8 + rand() * 20; s++) {
+      if (!onMaterial(x, y, 'yard')) break;
+      a.px(x, y, 0x1a1c1f);
+      dir += (rand() - 0.5) * 0.8;
+      x += Math.cos(dir);
+      y += Math.sin(dir);
+    }
+  }
+  for (const lane of [44, 49]) {
+    for (let y = 60 * T + 4; y < BAY_PAD[1] * T - 4; y += 12) a.rect(lane * T, y, 2, 7, p.paintYellow, 170);
+  }
+  drawBayPad(a, rand);
+
   // Main street markings: a faded centre line and two zebra crossings.
   for (let x = 2 * T; x < 59 * T; x += 48) {
     for (let dx = 0; dx < 20; dx++) for (let dy = -1; dy <= 0; dy++) if (rand() > 0.15) a.px(x + dx, 30 * T + dy, p.paintYellow, 200);
@@ -259,11 +300,37 @@ function obstacles(): PixelArt {
   const a = new PixelArt(W, H);
   SOLIDS.forEach((solid, i) => drawSolid(a, solid, seeded(500 + i)));
   drawLandmarks(a, seeded(31));
-  // Gate frame: amber posts either side of the opening.
+  // Gate frames: amber posts either side of each opening, inside the wall beside it.
   const [gc, gr, , gh] = GATE_RECT;
   a.rect(gc * T, gr * T - 3, T, 3, PALETTE.hazardAmber);
   a.rect(gc * T, (gr + gh) * T, T, 3, PALETTE.hazardAmber);
+  const [fc, fr, fw] = FACILITY_GATE_RECT;
+  a.rect(fc * T - 3, fr * T, 3, T, PALETTE.hazardAmber);
+  a.rect((fc + fw) * T, fr * T, 3, T, PALETTE.hazardAmber);
   return a;
+}
+
+/** The mech bay: hazard stripes round a clean pad, a charging cable and corner bollards painted on. */
+function drawBayPad(a: PixelArt, rand: () => number): void {
+  const [c, r, w, h] = BAY_PAD;
+  const x = c * T;
+  const y = r * T;
+  const pw = w * T;
+  const ph = h * T;
+  a.rect(x, y, pw, ph, 0x34373c);
+  for (let i = 0; i < 40; i++) a.px(x + rand() * pw, y + rand() * ph, 0x2c2e33);
+  // Diagonal hazard border, 4 art px wide.
+  for (let yy = y; yy < y + ph; yy++) {
+    for (let xx = x; xx < x + pw; xx++) {
+      const edge = xx < x + 4 || xx >= x + pw - 4 || yy < y + 4 || yy >= y + ph - 4;
+      if (edge) a.px(xx, yy, Math.floor((xx + yy) / 4) % 2 ? PALETTE.hazardAmber : PALETTE.hazardBlack, 210);
+    }
+  }
+  // Where the mech's feet stand, and the cable running back to the hangar.
+  const mx = MECH_BAY.x / WORLD_ART_SCALE;
+  const my = MECH_BAY.y / WORLD_ART_SCALE;
+  for (const dy of [-9, 9]) a.rect(mx - 6, my + dy - 3, 12, 6, 0x2a2c30);
+  for (let yy = my + 14; yy < y + ph; yy++) a.px(mx + Math.round(Math.sin(yy / 5) * 2), yy, 0x141519);
 }
 
 function drawSolid(a: PixelArt, { kind, rect }: Solid, rand: () => number): void {
@@ -273,7 +340,9 @@ function drawSolid(a: PixelArt, { kind, rect }: Solid, rand: () => number): void
   const pw = w * T;
   const ph = h * T;
   const p = PALETTE;
-  if (kind === 'building') {
+  if (kind === 'building' && r >= INDUSTRIAL.area[1]) {
+    drawWarehouse(a, rect, rand);
+  } else if (kind === 'building') {
     const roof = p.roofs[Math.floor(rand() * p.roofs.length)];
     a.rect(x, y, pw, ph, roof);
     for (let i = 0; i < pw * ph * 0.05; i++) a.px(x + rand() * pw, y + rand() * ph, rand() < 0.5 ? shade(roof, 0.08) : shade(roof, -0.15));
@@ -325,6 +394,21 @@ function drawSolid(a: PixelArt, { kind, rect }: Solid, rand: () => number): void
     const style = solidIndexOf(rect) === solidIndexOf(LANDMARKS.policeCar.rect) ? 'police'
       : solidIndexOf(rect) === solidIndexOf(LANDMARKS.burnedCar.rect) ? 'burned' : 'wreck';
     drawCar(a, x, y, pw, ph, rand, style);
+  } else if (kind === 'container') {
+    drawContainer(a, x, y, pw, ph, rand);
+  } else if (kind === 'tank') {
+    // A round fuel tank on a square concrete plinth, so the whole solid looks solid.
+    a.rect(x, y, pw, ph, p.concrete);
+    a.rect(x, y, pw, 1, p.concreteLight);
+    const r2 = Math.min(pw, ph) / 2 - 2;
+    const cx = x + pw / 2;
+    const cy = y + ph / 2;
+    a.disc(cx + 1, cy + 1, r2, PALETTE.shadow, 120);
+    a.disc(cx, cy, r2, 0x4e555c);
+    a.disc(cx, cy, r2 - 2, 0x626a72);
+    a.disc(cx - r2 / 3, cy - r2 / 3, r2 / 3, 0x7a828a);
+    for (let k = -r2 + 3; k < r2 - 2; k += 4) a.rect(cx - 1, cy + k, 2, 2, p.hazardAmber);
+    a.rect(cx + r2 - 4, cy - 2, 3, 4, p.metalDark); // valve
   } else if (kind === 'dumpster') {
     a.rect(x, y, pw, ph, p.dumpster);
     a.rect(x + 1, y + 1, pw - 2, ph - 2, p.dumpsterLid);
@@ -389,6 +473,58 @@ function drawCar(a: PixelArt, x: number, y: number, pw: number, ph: number, rand
     at(Math.round(len * 0.58), 4, Math.round(len * 0.14), wid - 8, 0x0c0d0f);
     at(Math.round(len * 0.24), 4, Math.round(len * 0.1), wid - 8, 0x0c0d0f);
   }
+}
+
+/** A warehouse seen from above: a corrugated roof with skylight strips, vents, and a loading façade. */
+function drawWarehouse(a: PixelArt, rect: TileRect, rand: () => number): void {
+  const [c, r, w, h] = rect;
+  const x = c * T;
+  const y = r * T;
+  const pw = w * T;
+  const ph = h * T;
+  const p = PALETTE;
+  const roof = [0x3a3f45, 0x353a32, 0x403a38][Math.floor(rand() * 3)];
+  a.rect(x, y, pw, ph, roof);
+  // Corrugation running across the short side.
+  for (let xx = x + 2; xx < x + pw - 2; xx += 3) a.rect(xx, y + 2, 1, ph - 4, shade(roof, -0.25));
+  for (let i = 0; i < pw * ph * 0.03; i++) a.px(x + rand() * pw, y + rand() * ph, rand() < 0.5 ? p.rust : shade(roof, 0.12));
+  // Skylight strips along the ridge.
+  for (let xx = x + 6; xx < x + pw - 10; xx += 14) a.rect(xx, y + ph / 2 - 6, 8, 3, p.glass);
+  // Roof vents.
+  for (let xx = x + 10; xx < x + pw - 8; xx += 24) {
+    a.disc(xx + 1, y + 7, 3, PALETTE.shadow, 120);
+    a.disc(xx, y + 6, 3, p.metal);
+    a.px(xx, y + 6, p.metalDark);
+  }
+  a.rect(x, y, pw, 2, p.parapet);
+  a.rect(x, y, 2, ph, p.parapet);
+  a.rect(x, y + ph - 2, pw, 2, shade(p.parapet, -0.35));
+  a.rect(x + pw - 2, y, 2, ph, shade(p.parapet, -0.35));
+  drawFacade(a, rect, rand);
+}
+
+/** A shipping container: ribbed steel in a faded livery, doors at one end. */
+function drawContainer(a: PixelArt, x: number, y: number, pw: number, ph: number, rand: () => number): void {
+  const body = [0x6a2e24, 0x2a4660, 0x2e5236, 0x7a5424][Math.floor(rand() * 4)];
+  const along = pw >= ph;
+  a.rect(x, y, pw, ph, shade(body, -0.25));
+  a.rect(x + 1, y + 1, pw - 2, ph - 2, body);
+  // Ribs across the short side.
+  const len = along ? pw : ph;
+  for (let i = 3; i < len - 3; i += 3) {
+    if (along) a.rect(x + i, y + 1, 1, ph - 2, shade(body, -0.18));
+    else a.rect(x + 1, y + i, pw - 2, 1, shade(body, -0.18));
+  }
+  // Doors and their lock bars at the far end.
+  if (along) {
+    a.rect(x + pw - 5, y + 1, 4, ph - 2, shade(body, -0.35));
+    for (let k = 3; k < ph - 2; k += 5) a.rect(x + pw - 4, y + k, 2, 1, PALETTE.metal);
+  } else {
+    a.rect(x + 1, y + ph - 5, pw - 2, 4, shade(body, -0.35));
+    for (let k = 3; k < pw - 2; k += 5) a.rect(x + k, y + ph - 4, 1, 2, PALETTE.metal);
+  }
+  a.rect(x, y, pw, 1, shade(body, 0.3));
+  for (let i = 0; i < 8; i++) a.px(x + rand() * pw, y + rand() * ph, PALETTE.rust);
 }
 
 function foreground(): PixelArt {

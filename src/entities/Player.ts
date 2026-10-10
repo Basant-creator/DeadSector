@@ -27,11 +27,56 @@ export function muzzleOffset(weapon: WeaponDef): number {
 
 /** Frame size of the player's sprite sheets (src/art/characters.ts), wide enough for the longest barrel. */
 const TEXTURE_SIZE = 64;
-const BODY_RADIUS = 14;
+export const PLAYER_BODY_RADIUS = 14;
 const HIT_FLASH_MS = 90;
 const BLINK_PERIOD_MS = 80;
 
-type MoveKeys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+export type MoveKeys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+
+/** WASD, shared by everything the player steers: Phaser hands back the same keys every time. */
+export function moveKeys(scene: Phaser.Scene): MoveKeys {
+  const keyboard = scene.input.keyboard;
+  if (!keyboard) {
+    throw new Error('Steering requires keyboard input');
+  }
+  const { W, A, S, D } = Phaser.Input.Keyboard.KeyCodes;
+  return { up: keyboard.addKey(W), left: keyboard.addKey(A), down: keyboard.addKey(S), right: keyboard.addKey(D) };
+}
+
+/**
+ * The mouse cursor in world coordinates, written into *out*. Re-projected every call:
+ * pointer.worldX/Y only refresh on mouse events, so they go stale while the camera scrolls under a
+ * stationary cursor. Projected through the camera's view, not its render matrix: screen shake
+ * offsets the matrix, and the aim must not shake with it.
+ */
+export function pointerInWorld(scene: Phaser.Scene, out: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+  const pointer = scene.input.activePointer;
+  const camera = scene.cameras.main;
+  const view = camera.worldView;
+  return out.set(view.x + (pointer.x - camera.x) / camera.zoom, view.y + (pointer.y - camera.y) / camera.zoom);
+}
+
+/** Unit-length input from *keys*, scaled to *speed*. */
+export function steer(keys: MoveKeys, speed: number, out: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+  const { up, down, left, right } = keys;
+  return out.set(Number(right.isDown) - Number(left.isDown), Number(down.isDown) - Number(up.isDown)).normalize().scale(speed);
+}
+
+/**
+ * Steer *velocity* toward *target* at a fixed rate: full speed in *accelMs* while there is input,
+ * a stop in *decelMs* without. *dt* in ms.
+ */
+export function approach(
+  velocity: Phaser.Math.Vector2, target: Phaser.Math.Vector2, speed: number, accelMs: number, decelMs: number, dt: number,
+): Phaser.Math.Vector2 {
+  const rate = speed / (target.lengthSq() > 0 ? accelMs : decelMs);
+  const dx = target.x - velocity.x;
+  const dy = target.y - velocity.y;
+  const gap = Math.hypot(dx, dy);
+  const step = rate * dt;
+  if (gap <= step) return velocity.copy(target);
+  return velocity.set(velocity.x + (dx / gap) * step, velocity.y + (dy / gap) * step);
+}
 
 /** The player: WASD movement, faces the mouse cursor independently of movement direction. */
 export class Player extends Phaser.Physics.Arcade.Sprite {
@@ -45,6 +90,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private readonly velocity = new Phaser.Math.Vector2();
   private lastUpdateAt = 0;
   private recoilUntil = 0;
+  private inVehicle = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, playerTextureKey(WEAPONS[STARTING_WEAPON]));
@@ -52,23 +98,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
 
     // Circular body centred in the texture, so rotating the sprite to aim never shifts the hitbox.
-    const offset = TEXTURE_SIZE / 2 - BODY_RADIUS;
-    this.setCircle(BODY_RADIUS, offset, offset);
+    const offset = TEXTURE_SIZE / 2 - PLAYER_BODY_RADIUS;
+    this.setCircle(PLAYER_BODY_RADIUS, offset, offset);
     this.setCollideWorldBounds(true);
     // Above enemies and bullets, so its hit flash and blink stay visible in contact.
     this.setDepth(3);
 
-    const keyboard = scene.input.keyboard;
-    if (!keyboard) {
-      throw new Error('Player requires keyboard input');
-    }
-    const { W, A, S, D } = Phaser.Input.Keyboard.KeyCodes;
-    this.keys = {
-      up: keyboard.addKey(W),
-      left: keyboard.addKey(A),
-      down: keyboard.addKey(S),
-      right: keyboard.addKey(D),
-    };
+    this.keys = moveKeys(scene);
   }
 
   /** Show *weapon* in hand. Every sheet has the same frame size, so the body does not move. */
@@ -100,7 +136,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * Returns whether it landed, so the caller can add feedback for real hits only.
    */
   takeDamage(amount: number, now: number): boolean {
-    if (this.dead || now < this.invulnerableUntil) return false;
+    // Inside the mech, its hull takes the hits; nothing reaches the pilot.
+    if (this.dead || this.inVehicle || now < this.invulnerableUntil) return false;
     this.hp = Math.max(0, this.hp - amount);
     this.invulnerableUntil = now + PLAYER_INVULNERABLE_MS;
     if (this.hp === 0) {
@@ -119,6 +156,39 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.recoilUntil = Math.max(this.recoilUntil, now + ms);
   }
 
+  /** Whether the player is inside the mech: hidden, with no body, carried along by it. */
+  get isInVehicle(): boolean {
+    return this.inVehicle;
+  }
+
+  /** Climb into a vehicle: the sprite hides and the body leaves the physics world. */
+  enterVehicle(): void {
+    if (this.inVehicle || this.dead) return;
+    this.inVehicle = true;
+    this.anims.stop();
+    this.velocity.set(0, 0);
+    this.disableBody(false, true);
+  }
+
+  /** Ride along at (x, y), so everything that follows the player follows the vehicle. */
+  followVehicle(x: number, y: number): void {
+    if (this.inVehicle) this.setPosition(x, y);
+  }
+
+  /**
+   * Climb out at (x, y), untouchable for *protectMs*: the moment of getting out is never the
+   * moment of getting hit. Health is what it was on the way in.
+   */
+  exitVehicle(x: number, y: number, now: number, protectMs: number): void {
+    if (!this.inVehicle) return;
+    this.inVehicle = false;
+    this.enableBody(true, x, y, true, true);
+    this.setVelocity(0, 0);
+    this.setFrame(0);
+    this.lastUpdateAt = now;
+    this.invulnerableUntil = Math.max(this.invulnerableUntil, now + protectMs);
+  }
+
   /** A hit-stop held the game for *ms*: the invulnerability window must not run out during it. */
   shiftTimers(ms: number): void {
     this.invulnerableUntil += ms;
@@ -126,7 +196,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   update(now: number): void {
-    if (this.dead) return;
+    if (this.dead || this.inVehicle) return;
     const dt = this.lastUpdateAt > 0 ? Phaser.Math.Clamp(now - this.lastUpdateAt, 0, 50) : 16;
     this.lastUpdateAt = now;
     this.updateMovement(dt);
@@ -165,32 +235,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * DECEL_MS. The target is normalized first, so diagonals stay at PLAYER_SPEED.
    */
   private updateMovement(dt: number): void {
-    const { up, down, left, right } = this.keys;
-    this.moveDir
-      .set(Number(right.isDown) - Number(left.isDown), Number(down.isDown) - Number(up.isDown))
-      .normalize()
-      .scale(PLAYER_SPEED);
+    steer(this.keys, PLAYER_SPEED, this.moveDir);
     const body = this.body as Phaser.Physics.Arcade.Body;
     this.velocity.copy(body.velocity);
-    const rate = PLAYER_SPEED / (this.moveDir.lengthSq() > 0 ? ACCEL_MS : DECEL_MS);
-    const dx = this.moveDir.x - this.velocity.x;
-    const dy = this.moveDir.y - this.velocity.y;
-    const gap = Math.hypot(dx, dy);
-    const step = rate * dt;
-    if (gap <= step) this.velocity.copy(this.moveDir);
-    else this.velocity.set(this.velocity.x + (dx / gap) * step, this.velocity.y + (dy / gap) * step);
+    approach(this.velocity, this.moveDir, PLAYER_SPEED, ACCEL_MS, DECEL_MS, dt);
     this.setVelocity(this.velocity.x, this.velocity.y);
   }
 
   private updateAim(): void {
-    // Re-project the pointer every frame: pointer.worldX/Y only refresh on mouse events,
-    // so they go stale while the camera scrolls under a stationary cursor. Project through the
-    // camera's view, not its render matrix: screen shake offsets the matrix, and the aim must
-    // not shake with it.
-    const pointer = this.scene.input.activePointer;
-    const camera = this.scene.cameras.main;
-    const view = camera.worldView;
-    this.aimPoint.set(view.x + (pointer.x - camera.x) / camera.zoom, view.y + (pointer.y - camera.y) / camera.zoom);
+    pointerInWorld(this.scene, this.aimPoint);
     this.setRotation(Phaser.Math.Angle.Between(this.x, this.y, this.aimPoint.x, this.aimPoint.y));
   }
 }

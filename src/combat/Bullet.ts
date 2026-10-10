@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import type { WeaponId } from './weapons';
+import type { GunId } from './weapons';
 
-/** Tracer texture from src/art/props.ts: 12 x 12, drawn along +x and rotated to the flight path. */
+/** Default tracer texture from src/art/props.ts: 12 x 12, drawn along +x and rotated to the flight path. */
 const TEXTURE_KEY = 'bullet';
 const TEXTURE_SIZE = 12;
 const BODY_RADIUS = 3;
@@ -14,18 +14,25 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
   private expiresAt = 0;
   /** Damage this shot deals, set by the weapon that fired it. */
   damage = 0;
-  /** The weapon that fired it, for how hard its hit feels; null for bullets fired by other means. */
-  weapon: WeaponId | null = null;
+  /** The gun that fired it, for how hard its hit feels; null for bullets fired by other means. */
+  weapon: GunId | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, TEXTURE_KEY);
     this.setDepth(2);
   }
 
-  /** Launch from (x, y) along *angle*; the bullet removes itself after *lifetimeMs*. */
-  fire(x: number, y: number, angle: number, speed: number, lifetimeMs: number, damage: number, weapon: WeaponId | null = null): void {
+  /**
+   * Launch from (x, y) along *angle*; the bullet removes itself after *lifetimeMs*. *tracer* is
+   * its look (the mech's cannon fires heavier rounds), set on every launch as bullets are pooled.
+   */
+  fire(
+    x: number, y: number, angle: number, speed: number, lifetimeMs: number, damage: number,
+    weapon: GunId | null = null, tracer = TEXTURE_KEY,
+  ): void {
     this.damage = damage;
     this.weapon = weapon;
+    if (this.texture.key !== tracer) this.setTexture(tracer);
     this.enableBody(true, x, y, true, true);
     // Set on every launch: the pool's group applies its own body defaults when it creates a
     // bullet, after the constructor has run.

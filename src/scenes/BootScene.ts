@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { createCharacterArt } from '../art/characters';
 import { createCityArt } from '../art/cityArt';
+import { createMechArt } from '../art/mechArt';
 import { createPropArt } from '../art/props';
 import { createSfx } from '../audio/sfx';
 
@@ -16,6 +17,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     createCharacterArt(this);
+    createMechArt(this);
     createPropArt(this);
     createCityArt(this);
     createSfx(this);

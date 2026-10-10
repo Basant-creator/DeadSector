@@ -1,13 +1,11 @@
 /** Every weapon, by key, in slot order. Stats live here only; `Weapon` reads them. */
 export type WeaponId = 'pistol' | 'shotgun' | 'rifle';
+/** Anything that fires bullets: the player's weapons, and the mech's cannon (src/mech/mechRules.ts). */
+export type GunId = WeaponId | 'mech';
 
-export interface WeaponDef {
-  readonly id: WeaponId;
-  readonly name: string;
-  /** Coins to buy it; 0 for the weapon every run starts with. */
-  readonly cost: number;
-  /** Number key that selects it. */
-  readonly slot: number;
+/** How a gun fires: all `Weapon` needs. */
+export interface GunDef {
+  readonly id: GunId;
   /** Shots per second while the trigger is held. */
   readonly fireRate: number;
   /**
@@ -26,6 +24,17 @@ export interface WeaponDef {
   readonly spread: number;
   /** Random deviation added to every bullet, in radians either way. */
   readonly jitter: number;
+  /** Tracer texture (src/art/props.ts), 12 x 12 like the default 'bullet'; the hitbox is the same for all. */
+  readonly tracer?: string;
+}
+
+export interface WeaponDef extends GunDef {
+  readonly id: WeaponId;
+  readonly name: string;
+  /** Coins to buy it; 0 for the weapon every run starts with. */
+  readonly cost: number;
+  /** Number key that selects it. */
+  readonly slot: number;
   /** Barrel drawn on the player while it is held, in px from the body's edge. */
   readonly barrel: { readonly length: number; readonly width: number; readonly color: number };
 }

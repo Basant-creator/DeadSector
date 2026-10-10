@@ -1,5 +1,5 @@
 import type { EnemyKind } from '../entities/enemies';
-import type { WeaponId } from './weapons';
+import type { GunId } from './weapons';
 
 /**
  * Combat feel: how hard things look, sound and push, never how much they hurt. Damage, fire
@@ -18,12 +18,14 @@ export interface WeaponFeel {
   readonly sound: string;
 }
 
-export const WEAPON_FEEL: Readonly<Record<WeaponId, WeaponFeel>> = {
+export const WEAPON_FEEL: Readonly<Record<GunId, WeaponFeel>> = {
   pistol: { recoilMs: 70, kickPx: 3, shake: null, knockback: 90, sound: 'sfx-pistol' },
   // Six pellets that all land add up: a close blast shoves a Walker about 20 px.
   shotgun: { recoilMs: 130, kickPx: 9, shake: { intensity: 0.004, ms: 90 }, knockback: 110, sound: 'sfx-shotgun' },
   // Small per shot; the camera's follow pulls each kick back, so sustained fire settles near 3 px.
   rifle: { recoilMs: 45, kickPx: 1.6, shake: null, knockback: 35, sound: 'sfx-rifle' },
+  // Heavy rounds that shove; no per-shot shake: six a second would never let the screen settle.
+  mech: { recoilMs: 90, kickPx: 2.5, shake: null, knockback: 150, sound: 'sfx-cannon' },
 };
 
 /** Divides knockback: heavier enemies barely move. The Giant does not move at all. */

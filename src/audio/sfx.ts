@@ -118,6 +118,40 @@ export const SFX: Readonly<Record<string, Recipe>> = {
     { kind: 'sine', from: 110, to: 38, decay: 0.12, gain: 0.8 },
     { kind: 'noise', decay: 0.2, gain: 0.25, highpass: 0.5 },
   ] },
+  // The mech: a cannon deeper than any hand gun, a stomp that shakes the ground, armour that
+  // rings when hit, and the whine of powering up and down.
+  'sfx-cannon': { seconds: 0.4, drive: 2.2, layers: [
+    { kind: 'noise', decay: 0.02, gain: 0.8, highpass: 0.35 },
+    { kind: 'sine', from: 120, to: 38, decay: 0.12, gain: 1 },
+    { kind: 'noise', decay: 0.09, gain: 0.5, lowpass: 0.1 },
+  ] },
+  'sfx-stomp': { seconds: 1.1, drive: 2.6, layers: [
+    { kind: 'sine', from: 60, to: 22, decay: 0.4, gain: 1 },
+    { kind: 'noise', decay: 0.3, gain: 0.9, lowpass: 0.05 },
+    { kind: 'noise', decay: 0.03, gain: 0.5, highpass: 0.25 },
+    { kind: 'sine', from: 180, to: 90, decay: 0.08, gain: 0.4 },
+  ] },
+  'sfx-clank': { seconds: 0.4, drive: 1.5, layers: [
+    { kind: 'noise', decay: 0.008, gain: 0.5, highpass: 0.5 },
+    { kind: 'sine', from: 620, to: 560, decay: 0.12, gain: 0.35 },
+    { kind: 'sine', from: 1460, to: 1400, decay: 0.08, gain: 0.18 },
+    { kind: 'sine', from: 140, to: 80, decay: 0.05, gain: 0.5 },
+  ] },
+  'sfx-mech-on': { seconds: 0.9, drive: 1.6, layers: [
+    { kind: 'saw', from: 70, to: 240, decay: 0.35, attack: 0.1, gain: 0.4, lowpass: 0.1 },
+    { kind: 'square', from: 140, to: 480, decay: 0.25, attack: 0.15, gain: 0.12, lowpass: 0.2 },
+    { kind: 'noise', decay: 0.05, gain: 0.3, lowpass: 0.2 },
+  ] },
+  'sfx-mech-off': { seconds: 1, drive: 1.4, layers: [
+    { kind: 'saw', from: 240, to: 50, decay: 0.4, gain: 0.4, lowpass: 0.1 },
+    { kind: 'noise', decay: 0.3, gain: 0.2, lowpass: 0.05 },
+  ] },
+  'sfx-explosion': { seconds: 1.4, drive: 2.6, layers: [
+    { kind: 'noise', decay: 0.45, gain: 1, lowpass: 0.07 },
+    { kind: 'sine', from: 80, to: 24, decay: 0.5, gain: 1 },
+    { kind: 'noise', decay: 0.05, gain: 0.6, highpass: 0.3 },
+    { kind: 'noise', decay: 0.2, attack: 0.05, gain: 0.4, lowpass: 0.2 },
+  ] },
 };
 
 /** Render every recipe into the audio cache. Without Web Audio the game simply stays silent. */
@@ -192,11 +226,11 @@ function mulberry(seed: number): () => number {
 
 /** Shortest gap between two plays of the same effect, so a crowd never becomes a wall of noise. */
 const MIN_GAP_MS: Readonly<Record<string, number>> = {
-  'sfx-hit': 35, 'sfx-impact': 45, 'sfx-death': 40, 'sfx-crash': 80, 'sfx-ping': 60, 'sfx-alarm': 1500,
+  'sfx-hit': 35, 'sfx-impact': 45, 'sfx-death': 40, 'sfx-crash': 80, 'sfx-ping': 60, 'sfx-alarm': 1500, 'sfx-clank': 60,
 };
-/** Above this many sounds at once, only weapons and the player's own hurt still play. */
+/** Above this many sounds at once, only weapons and the player's (or the mech's) own hurt still play. */
 const MAX_VOICES = 20;
-const ALWAYS = new Set(['sfx-pistol', 'sfx-shotgun', 'sfx-rifle', 'sfx-hurt', 'sfx-slam']);
+const ALWAYS = new Set(['sfx-pistol', 'sfx-shotgun', 'sfx-rifle', 'sfx-hurt', 'sfx-slam', 'sfx-cannon', 'sfx-clank', 'sfx-stomp']);
 
 /** Plays the synthesised effects with per-sound rate limits and a voice cap. */
 export class Sfx {

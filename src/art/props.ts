@@ -1,29 +1,33 @@
 import Phaser from 'phaser';
-import { WEAPON_IDS, WEAPONS, type WeaponId } from '../combat/weapons';
+import { type GunId, WEAPON_IDS, WEAPONS, type WeaponId } from '../combat/weapons';
 import { PALETTE } from './palette';
 import { addImage, addSheet, PixelArt, seeded } from './pixels';
 
 /** Pixel scale of props and effects: one art pixel is 2 world pixels, like the characters. */
 const S = 2;
 
-export const muzzleKey = (id: WeaponId) => `fx-muzzle-${id}`;
+export const muzzleKey = (id: GunId) => `fx-muzzle-${id}`;
 export const weaponIconKey = (id: WeaponId) => `hud-weapon-${id}`;
 export const lockerKey = (id: WeaponId) => `locker-${id}`;
 
 /** Muzzle flash shape per weapon: length and width of the flame, in art px. */
-const MUZZLE: Record<WeaponId, { length: number; width: number }> = {
+const MUZZLE: Record<GunId, { length: number; width: number }> = {
   pistol: { length: 6, width: 5 },
   shotgun: { length: 8, width: 9 },
   rifle: { length: 9, width: 4 },
+  mech: { length: 10, width: 7 },
 };
 
 export function createPropArt(scene: Phaser.Scene): void {
   bullet(scene);
+  heavyBullet(scene);
   for (const id of WEAPON_IDS) {
     muzzle(scene, id);
     weaponIcon(scene, id);
     locker(scene, id);
   }
+  muzzle(scene, 'mech');
+  ring(scene);
   spark(scene);
   dust(scene);
   paper(scene);
@@ -31,6 +35,7 @@ export function createPropArt(scene: Phaser.Scene): void {
   splats(scene);
   rock(scene);
   gateShutter(scene);
+  gateShutterLying(scene);
   hudIcons(scene);
   gradient(scene, 'fx-light', 128, 128, [[0, 1], [0.35, 0.45], [1, 0]]);
   // Steam: a soft grey wisp, faint even at full alpha.
@@ -47,7 +52,30 @@ function bullet(scene: Phaser.Scene): void {
   addImage(scene, 'bullet', a, 1);
 }
 
-function muzzle(scene: Phaser.Scene, id: WeaponId): void {
+/** The mech's cannon round: the same 12 x 12 frame (and hitbox), a fatter, hotter tracer. */
+function heavyBullet(scene: Phaser.Scene): void {
+  const a = new PixelArt(12, 12);
+  a.rect(0, 4, 3, 4, PALETTE.fireEdge, 150);
+  a.rect(3, 4, 3, 4, PALETTE.fireMid);
+  a.rect(6, 4, 5, 4, PALETTE.fireCore);
+  a.rect(10, 5, 2, 2, 0xffffff);
+  addImage(scene, 'bullet-heavy', a, 1);
+}
+
+/** A shockwave ring, white-hot at the edge; scaled to its reach as it expands. 128 px across. */
+function ring(scene: Phaser.Scene): void {
+  const a = new PixelArt(64, 64);
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const d = Math.hypot(x + 0.5 - 32, y + 0.5 - 32);
+      if (d >= 29 && d < 31.5) a.px(x, y, 0xe8e0c8);
+      else if (d >= 25 && d < 29) a.px(x, y, 0xa89a80, 90);
+    }
+  }
+  addImage(scene, 'fx-ring', a, S);
+}
+
+function muzzle(scene: Phaser.Scene, id: GunId): void {
   const { length, width } = MUZZLE[id];
   const h = width + 4;
   const frames = [1, 0.6].map((size) => {
@@ -178,6 +206,20 @@ function gateShutter(scene: Phaser.Scene): void {
   a.rect(6, 22, 4, 4, PALETTE.hazardAmber);
   a.px(7, 23, PALETTE.hazardBlack);
   addImage(scene, 'gate-shutter', a, S);
+}
+
+/** The facility gate's shutter, lying across a wall that runs east-west: 3 x 1 tiles. */
+function gateShutterLying(scene: Phaser.Scene): void {
+  const a = new PixelArt(48, 16);
+  a.rect(0, 0, 48, 16, PALETTE.metalDark);
+  for (let x = 1; x < 48; x += 3) a.rect(x, 1, 2, 14, PALETTE.metal);
+  for (let x = 0; x < 48; x += 6) {
+    a.rect(x, 0, 3, 2, PALETTE.hazardAmber);
+    a.rect(x + 3, 14, 3, 2, PALETTE.hazardAmber);
+  }
+  a.rect(22, 6, 4, 4, PALETTE.hazardAmber);
+  a.px(23, 7, PALETTE.hazardBlack);
+  addImage(scene, 'gate-shutter-h', a, S);
 }
 
 /** A side view of each weapon for the HUD. */

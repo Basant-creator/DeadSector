@@ -32,6 +32,19 @@ export interface HudState {
   warning: string;
   /** Pulses the warning between full and dim; it never disappears. */
   warningBright: boolean;
+  /** The mech while the player pilots it; null hides its panel. */
+  mech: MechHud | null;
+}
+
+export interface MechHud {
+  health: number;
+  maxHealth: number;
+  energy: number;
+  maxEnergy: number;
+  /** Seconds until the stomp is ready again; 0 when ready. */
+  stompCooldownS: number;
+  /** Whether there is energy enough for a stomp. */
+  stompAffordable: boolean;
 }
 
 export type NoticeTone = 'info' | 'warn';
@@ -52,7 +65,7 @@ export const UI_FONT = '"Courier New", Courier, monospace';
 const PAD = 10;
 /** Translucent enough that an enemy passing under a panel stays visible. */
 const PANEL = { fill: 0x0a0c10, alpha: 0.5 };
-const ACCENT = { health: 0xd8443a, wave: 0x3ad8e8, coin: 0xf0b030, weapon: 0xf0b030, boss: 0xe0553d } as const;
+const ACCENT = { health: 0xd8443a, wave: 0x3ad8e8, coin: 0xf0b030, weapon: 0xf0b030, boss: 0xe0553d, mech: 0x3ad8e8 } as const;
 const BAR_WIDTH = 160;
 const BAR_HEIGHT = 12;
 const BAR_SEGMENTS = 10;
@@ -62,6 +75,15 @@ const BOSS_BAR_WIDTH = 420;
 const BOSS_BAR_HEIGHT = 10;
 const SLOT_GAP = 14;
 const BANNER_DEPTH = 20;
+const MECH_BAR_WIDTH = 140;
+const MECH_BAR_HEIGHT = 9;
+const ENERGY_COLORS = { normal: 0x3ad8e8, low: 0xe0a040 } as const;
+/** Below this share of a full charge, the energy bar turns amber. */
+const LOW_ENERGY = 0.2;
+const CONTROLS = {
+  onFoot: 'WASD move  LMB fire  E buy  1-3/Q weapons  K shake  -/+ volume  M mute',
+  mech: 'WASD walk  LMB cannon  SPACE stomp  E climb out  K shake  -/+ volume  M mute',
+} as const;
 
 const SLOT_STYLE = {
   held: { color: '#08090c', backing: 0xf0b030 },
@@ -100,6 +122,14 @@ export class Hud {
   private readonly bossLabel: Phaser.GameObjects.Text;
   private readonly bossFill: Phaser.GameObjects.Rectangle;
   private readonly warningText: Phaser.GameObjects.Text;
+  private readonly controlsText: Phaser.GameObjects.Text;
+  private readonly mechParts: Phaser.GameObjects.Components.Visible[];
+  private readonly mechHullFill: Phaser.GameObjects.Rectangle;
+  private readonly mechHullText: Phaser.GameObjects.Text;
+  private readonly mechEnergyFill: Phaser.GameObjects.Rectangle;
+  private readonly mechEnergyText: Phaser.GameObjects.Text;
+  private readonly mechStompText: Phaser.GameObjects.Text;
+  private mechShown = true;
 
   constructor(scene: Phaser.Scene) {
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(
@@ -117,9 +147,9 @@ export class Hud {
       }));
     /** A dark translucent panel with a coloured edge on the side facing the screen centre. */
     const panel = (x: number, y: number, w: number, h: number, accent: number, edge: 'left' | 'top' | 'right') => {
-      fixed(scene.add.rectangle(x, y, w, h, PANEL.fill, PANEL.alpha).setOrigin(0), DEPTH - 0.5);
+      const back = fixed(scene.add.rectangle(x, y, w, h, PANEL.fill, PANEL.alpha).setOrigin(0), DEPTH - 0.5);
       const bar = edge === 'top' ? [x, y, w, 2] : edge === 'left' ? [x, y, 3, h] : [x + w - 3, y, 3, h];
-      fixed(scene.add.rectangle(bar[0], bar[1], bar[2], bar[3], accent).setOrigin(0), DEPTH - 0.4);
+      return [back, fixed(scene.add.rectangle(bar[0], bar[1], bar[2], bar[3], accent).setOrigin(0), DEPTH - 0.4)];
     };
     const icon = (x: number, y: number, key: string) => fixed(scene.add.image(x, y, key).setOrigin(0, 0.5));
 
@@ -162,10 +192,31 @@ export class Hud {
       this.slotTexts[id] = text(PAD + 14, GAME_HEIGHT - PAD - 10, 13).setOrigin(0, 1).setStroke(UI_COLORS.outline, 0);
     }
 
-    // Controls, bottom centre.
-    text(GAME_WIDTH / 2, GAME_HEIGHT - PAD, 12, UI_COLORS.label, false)
+    // Controls, bottom centre; the mech's own while piloting it.
+    this.controlsText = text(GAME_WIDTH / 2, GAME_HEIGHT - PAD, 12, UI_COLORS.label, false)
       .setOrigin(0.5, 1)
-      .setText('WASD move  LMB fire  E buy  1-3/Q weapons  K shake  -/+ volume  M mute');
+      .setText(CONTROLS.onFoot);
+
+    // The mech, bottom right, only while piloting it: hull, energy, and the stomp.
+    const mx = GAME_WIDTH - PAD - 280;
+    const my = GAME_HEIGHT - PAD - 70;
+    const mechBar = (y: number, color: number) => {
+      const back = fixed(scene.add.rectangle(mx + 70, y, MECH_BAR_WIDTH, MECH_BAR_HEIGHT, 0x14181c).setOrigin(0));
+      return [back, fixed(scene.add.rectangle(mx + 70, y, MECH_BAR_WIDTH, MECH_BAR_HEIGHT, color).setOrigin(0))] as const;
+    };
+    const [hullBack, hullFill] = mechBar(my + 12, HEALTH_COLORS.high);
+    const [energyBack, energyFill] = mechBar(my + 30, ENERGY_COLORS.normal);
+    this.mechHullFill = hullFill;
+    this.mechEnergyFill = energyFill;
+    this.mechHullText = text(mx + 70 + MECH_BAR_WIDTH + 8, my + 9, 12);
+    this.mechEnergyText = text(mx + 70 + MECH_BAR_WIDTH + 8, my + 27, 12);
+    this.mechStompText = text(mx + 12, my + 48, 12, UI_COLORS.label);
+    this.mechParts = [
+      ...panel(mx, my, 280, 70, ACCENT.mech, 'right'),
+      text(mx + 12, my + 9, 12, UI_COLORS.label).setText('HULL'),
+      text(mx + 12, my + 27, 12, UI_COLORS.label).setText('ENERGY'),
+      hullBack, hullFill, energyBack, energyFill, this.mechHullText, this.mechEnergyText, this.mechStompText,
+    ];
 
     // Boss health under the wave panel, and the warning that comes before the boss.
     const bossY = PAD + 62;
@@ -233,6 +284,7 @@ export class Hud {
       this.bossFill.setScale(Phaser.Math.Clamp(boss.health / boss.maxHealth, 0, 1), 1);
     }
     this.warningText.setText(state.warning).setAlpha(state.warningBright ? 1 : 0.45);
+    this.updateMech(state.mech);
     this.promptText.setText(state.prompt);
     this.noticeText.setText(state.notice);
     // Unlike setText, setColor re-renders the text even when the colour is unchanged.
@@ -240,6 +292,26 @@ export class Hud {
       this.noticeTone = state.noticeTone;
       this.noticeText.setColor(UI_COLORS[state.noticeTone]);
     }
+  }
+
+  private updateMech(mech: MechHud | null): void {
+    const shown = mech !== null;
+    if (shown !== this.mechShown) {
+      this.mechShown = shown;
+      for (const part of this.mechParts) part.setVisible(shown);
+      this.controlsText.setText(shown ? CONTROLS.mech : CONTROLS.onFoot);
+    }
+    if (!mech) return;
+    const hull = Phaser.Math.Clamp(mech.health / mech.maxHealth, 0, 1);
+    this.mechHullFill.setScale(hull, 1).setFillStyle(hull > 0.5 ? HEALTH_COLORS.high : hull > 0.25 ? HEALTH_COLORS.mid : HEALTH_COLORS.low);
+    this.mechHullText.setText(`${Math.ceil(mech.health)}/${mech.maxHealth}`);
+    const energy = Phaser.Math.Clamp(mech.energy / mech.maxEnergy, 0, 1);
+    this.mechEnergyFill.setScale(energy, 1).setFillStyle(energy > LOW_ENERGY ? ENERGY_COLORS.normal : ENERGY_COLORS.low);
+    this.mechEnergyText.setText(`${Math.ceil(energy * 100)}%`);
+    this.mechStompText.setText(
+      !mech.stompAffordable ? 'SPACE STOMP: NO ENERGY'
+        : mech.stompCooldownS > 0 ? `SPACE STOMP: ${mech.stompCooldownS}s` : 'SPACE STOMP: READY',
+    );
   }
 }
 

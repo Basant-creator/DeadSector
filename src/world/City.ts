@@ -2,19 +2,22 @@ import Phaser from 'phaser';
 import { type LightSprite, renderCity } from '../art/cityArt';
 import type { Point } from '../waves/WaveDirector';
 import {
-  GATE_RECT, MAP_COLS, MAP_ROWS, PLAYER_SPAWN, type SolidKind, SOLIDS, TILE, type TileRect, tileRectToWorld, WEAPON_LOCKERS,
+  FACILITY_GATE_RECT, GATE_RECT, MAP_COLS, MAP_ROWS, MECH_BAY, PLAYER_SPAWN, type SolidKind, SOLIDS, TILE, type TileRect, tileRectToWorld,
+  WEAPON_LOCKERS,
 } from './cityMap';
-import { Gate } from './Gate';
+import { FACILITY_GATE_COST, Gate, GATE_COST } from './Gate';
+import { MechBay } from './MechBay';
 import { NavGrid } from './NavGrid';
 import { WeaponLocker } from './WeaponLocker';
 
-/** Marks the gate's tiles in the solid lookup. */
+/** Marks each gate's tiles in the solid lookup. */
 const GATE_TILE = -2;
+const FACILITY_GATE_TILE = -3;
 
 /**
  * Builds the city from `cityMap` into a scene: solid geometry in one static group, the alley
- * gate, the weapon lockers, and a navigation grid that mirrors the solids. Built afresh on every
- * scene start, so the gate is closed again on every new run.
+ * and facility gates, the weapon lockers, and a navigation grid that mirrors the solids. Built
+ * afresh on every scene start, so both gates are closed again on every new run.
  *
  * The solids are invisible rectangles: collision only. What the player sees is drawn by
  * src/art/cityArt.ts from the same map data, so the two always agree.
@@ -22,9 +25,13 @@ const GATE_TILE = -2;
 export class City {
   /** Every solid, the closed gate included: one collider per mover covers all of them. */
   readonly walls: Phaser.Physics.Arcade.StaticGroup;
+  /** The alley gate, into the Narrow Alleys. */
   readonly gate: Gate;
+  /** The gate into the Industrial Facility. */
+  readonly facilityGate: Gate;
   readonly nav: NavGrid;
   readonly lockers: readonly WeaponLocker[];
+  readonly mechBay: MechBay;
   /** The light pools in the scene, for `Ambience` to animate. */
   readonly lights: readonly LightSprite[];
   /** Per tile: the index into SOLIDS of the solid covering it, GATE_TILE, or -1 for open ground. */
@@ -41,12 +48,17 @@ export class City {
       this.markTiles(rect, index);
     });
     this.markTiles(GATE_RECT, GATE_TILE);
+    this.markTiles(FACILITY_GATE_RECT, FACILITY_GATE_TILE);
 
-    this.gate = new Gate(scene, GATE_RECT);
-    this.walls.add(this.gate.bars);
-    this.nav.setBlocked(GATE_RECT, true);
+    this.gate = new Gate(scene, GATE_RECT, GATE_COST);
+    this.facilityGate = new Gate(scene, FACILITY_GATE_RECT, FACILITY_GATE_COST);
+    for (const gate of [this.gate, this.facilityGate]) {
+      this.walls.add(gate.bars);
+      this.nav.setBlocked(gate.rect, true);
+    }
 
     this.lockers = WEAPON_LOCKERS.map((placement) => new WeaponLocker(scene, placement));
+    this.mechBay = new MechBay(scene, MECH_BAY);
   }
 
   get spawn(): Point {
@@ -62,7 +74,10 @@ export class City {
     const r = Math.floor(y / TILE);
     if (c < 0 || r < 0 || c >= MAP_COLS || r >= MAP_ROWS) return null;
     const index = this.solidTiles[r * MAP_COLS + c];
-    if (index === GATE_TILE) return this.gate.isOpen ? null : { kind: 'gate', index };
+    if (index === GATE_TILE || index === FACILITY_GATE_TILE) {
+      const gate = index === GATE_TILE ? this.gate : this.facilityGate;
+      return gate.isOpen ? null : { kind: 'gate', index };
+    }
     return index < 0 ? null : { kind: SOLIDS[index].kind, index };
   }
 
@@ -70,11 +85,11 @@ export class City {
     for (let row = r; row < r + h; row++) for (let col = c; col < c + w; col++) this.solidTiles[row * MAP_COLS + col] = value;
   }
 
-  /** Open the alley gate: out of the physics world and out of the navigation grid. */
-  openGate(): void {
-    if (this.gate.isOpen) return;
-    this.gate.open();
-    this.nav.setBlocked(GATE_RECT, false);
+  /** Open *gate* (the alley gate by default): out of the physics world and out of the navigation grid. */
+  openGate(gate: Gate = this.gate): void {
+    if (gate.isOpen) return;
+    gate.open();
+    this.nav.setBlocked(gate.rect, false);
   }
 
   private addRect(scene: Phaser.Scene, rect: TileRect): Phaser.GameObjects.Rectangle {
