@@ -51,6 +51,11 @@ export class Arsenal {
     return this.equip(owned[(owned.indexOf(this.held) + 1) % owned.length]);
   }
 
+  /** A hit-stop held every bullet for *ms*: none loses range to it. */
+  shiftTimers(ms: number): void {
+    for (const bullet of this.bullets.getChildren() as Bullet[]) if (bullet.active) bullet.extendLife(ms);
+  }
+
   tryFire(now: number, x: number, y: number, angle: number): boolean {
     return this.current.tryFire(now, this.bullets, x, y, angle);
   }

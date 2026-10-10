@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config';
+import type { Settings } from '../run/Profile';
 import { formatDuration, type RunOutcome, type RunStats } from '../run/Run';
-import { UI_COLORS } from './Hud';
+import { UI_COLORS, UI_FONT } from './Hud';
 
 export interface GameOverView {
   outcome: RunOutcome;
@@ -9,7 +10,7 @@ export interface GameOverView {
   waveCount: number;
   highScore: number;
   newHighScore: boolean;
-  screenShake: boolean;
+  settings: Settings;
 }
 
 const DEPTH = 30;
@@ -31,7 +32,7 @@ export class GameOverScreen {
       return object;
     };
     const text = (x: number, y: number, content: string, size: number, color: string = UI_COLORS.text) =>
-      add(scene.add.text(x, y, content, { fontFamily: 'monospace', fontSize: `${size}px`, color }));
+      add(scene.add.text(x, y, content, { fontFamily: UI_FONT, fontSize: `${size}px`, fontStyle: 'bold', color }));
 
     const cx = GAME_WIDTH / 2;
     const left = cx - PANEL_WIDTH / 2 + 32;
@@ -39,7 +40,7 @@ export class GameOverScreen {
     let y = GAME_HEIGHT / 2 - 170;
 
     add(scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6).setOrigin(0));
-    add(scene.add.rectangle(cx, GAME_HEIGHT / 2 - 20, PANEL_WIDTH, 330, 0x0b0d0b, 0.92).setStrokeStyle(2, 0x3a4038));
+    add(scene.add.rectangle(cx, GAME_HEIGHT / 2 - 20, PANEL_WIDTH, 330, 0x0a0c10, 0.92).setStrokeStyle(2, 0xd8443a));
 
     text(cx, y, view.outcome === 'died' ? 'YOU DIED' : 'SECTOR CLEARED', 40).setOrigin(0.5, 0);
     y += 76;
@@ -60,11 +61,12 @@ export class GameOverScreen {
     if (view.newHighScore) text(cx, y + 4, 'NEW HIGH SCORE', 18, '#d9a441').setOrigin(0.5, 0);
     y += 48;
 
-    this.footerText = text(cx, y, '', 16, UI_COLORS.label).setOrigin(0.5, 0);
-    this.setScreenShake(view.screenShake);
+    this.footerText = text(cx, y, '', 14, UI_COLORS.label).setOrigin(0.5, 0).setAlign('center');
+    this.showSettings(view.settings);
   }
 
-  setScreenShake(on: boolean): void {
-    this.footerText.setText(`[R] restart     [1] screen shake: ${on ? 'on' : 'off'}`);
+  showSettings(settings: Settings): void {
+    const volume = settings.muted ? 'muted' : `${Math.round(settings.volume * 100)}%`;
+    this.footerText.setText(`[R] restart\n[K] shake: ${settings.shake}   [-/+] volume: ${volume}   [M] mute`);
   }
 }

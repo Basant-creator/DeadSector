@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { weaponIconKey } from '../art/props';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config';
 import { type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/weapons';
 import { formatDuration } from '../run/Run';
@@ -36,36 +37,44 @@ export interface HudState {
 export type NoticeTone = 'info' | 'warn';
 
 export const UI_COLORS = {
-  text: '#c8d6c0',
-  label: '#6b7560',
-  outline: '#0b0d0b',
+  text: '#e8e6dc',
+  label: '#7a808c',
+  outline: '#08090c',
   info: '#7fb069',
   warn: '#e0a040',
   danger: '#e0553d',
+  coin: '#f0b030',
 } as const;
 
-const PAD = 20;
-const BAR_WIDTH = 220;
+/** Bold monospace everywhere, with a hard outline: readable over any part of the city. */
+export const UI_FONT = '"Courier New", Courier, monospace';
+
+const PAD = 10;
+const PANEL = { fill: 0x0a0c10, alpha: 0.74 };
+const ACCENT = { health: 0xd8443a, wave: 0x3ad8e8, coin: 0xf0b030, weapon: 0xf0b030, boss: 0xe0553d } as const;
+const BAR_WIDTH = 160;
 const BAR_HEIGHT = 12;
-const HEALTH_COLORS = { high: 0x7fb069, mid: 0xd9a441, low: 0xc8553d } as const;
+const BAR_SEGMENTS = 10;
+const HEALTH_COLORS = { high: 0xd8443a, mid: 0xf0882a, low: 0xff3030 } as const;
 const DEPTH = 10;
 const BOSS_BAR_WIDTH = 420;
 const BOSS_BAR_HEIGHT = 10;
-const SLOT_GAP = 16;
+const SLOT_GAP = 14;
 const BANNER_DEPTH = 20;
 
 const SLOT_STYLE = {
-  held: { color: '#0b0d0b', backing: 0xc8d6c0 },
-  owned: { color: '#c8d6c0' },
-  locked: { color: '#4a5244' },
+  held: { color: '#08090c', backing: 0xf0b030 },
+  owned: { color: '#e8e6dc' },
+  locked: { color: '#4e545e' },
 } as const;
 type SlotState = keyof typeof SLOT_STYLE;
 
 /**
- * Screen-space HUD: health and district top left, wave top centre, coins and run time top
- * right, weapons bottom left, prompts and notices lower centre. Every element ignores the
- * camera scroll. `update` can run every frame: Phaser's `setText` skips re-rendering a text
- * that has not changed, and colours are only set when they change.
+ * Screen-space HUD in small translucent panels at the screen edges, each with one accent
+ * colour: health (red) and district top left, wave (cyan) top centre, coins (amber) and run time
+ * top right, weapon and ammunition bottom left; prompts and notices lower centre. Every element
+ * ignores the camera scroll. `update` can run every frame: Phaser's `setText` skips re-rendering
+ * a text that has not changed, and colours are only set when they change.
  */
 export class Hud {
   private readonly healthFill: Phaser.GameObjects.Rectangle;
@@ -75,6 +84,7 @@ export class Hud {
   private readonly coinsText: Phaser.GameObjects.Text;
   private readonly timeText: Phaser.GameObjects.Text;
   private readonly weaponText: Phaser.GameObjects.Text;
+  private readonly weaponIcon: Phaser.GameObjects.Image;
   /** One per weapon, in slot order: "2 SHOTGUN 90c". */
   private readonly slotTexts: Record<WeaponId, Phaser.GameObjects.Text>;
   private readonly slotStates = {} as Record<WeaponId, SlotState>;
@@ -99,66 +109,86 @@ export class Hud {
       object.setDepth(depth);
       return object;
     };
-    const text = (x: number, y: number, size: number, color: string = UI_COLORS.text) =>
+    const text = (x: number, y: number, size: number, color: string = UI_COLORS.text, bold = true) =>
       fixed(scene.add.text(x, y, '', {
-        fontFamily: 'monospace', fontSize: `${size}px`, color,
-        stroke: UI_COLORS.outline, strokeThickness: 4,
+        fontFamily: UI_FONT, fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal',
+        stroke: UI_COLORS.outline, strokeThickness: 3,
       }));
+    /** A dark translucent panel with a coloured edge on the side facing the screen centre. */
+    const panel = (x: number, y: number, w: number, h: number, accent: number, edge: 'left' | 'top' | 'right') => {
+      fixed(scene.add.rectangle(x, y, w, h, PANEL.fill, PANEL.alpha).setOrigin(0), DEPTH - 0.5);
+      const bar = edge === 'top' ? [x, y, w, 2] : edge === 'left' ? [x, y, 3, h] : [x + w - 3, y, 3, h];
+      fixed(scene.add.rectangle(bar[0], bar[1], bar[2], bar[3], accent).setOrigin(0), DEPTH - 0.4);
+    };
+    const icon = (x: number, y: number, key: string) => fixed(scene.add.image(x, y, key).setOrigin(0, 0.5));
 
-    // Health, top left.
-    text(PAD, PAD, 12, UI_COLORS.label).setText('HEALTH');
-    fixed(scene.add.rectangle(PAD, PAD + 20, BAR_WIDTH, BAR_HEIGHT, 0x1a1f19).setOrigin(0).setStrokeStyle(1, 0x3a4038));
-    this.healthFill = fixed(scene.add.rectangle(PAD, PAD + 20, BAR_WIDTH, BAR_HEIGHT, HEALTH_COLORS.high).setOrigin(0));
-    this.healthText = text(PAD + BAR_WIDTH + 10, PAD + 16, 16);
-    this.districtText = text(PAD, PAD + 40, 14, UI_COLORS.label);
+    // Health, top left: heart, segmented bar, value; district underneath.
+    panel(PAD, PAD, 262, 54, ACCENT.health, 'left');
+    icon(PAD + 12, PAD + 18, 'hud-heart');
+    const barX = PAD + 40;
+    const barY = PAD + 12;
+    fixed(scene.add.rectangle(barX, barY, BAR_WIDTH, BAR_HEIGHT, 0x2a1416).setOrigin(0));
+    this.healthFill = fixed(scene.add.rectangle(barX, barY, BAR_WIDTH, BAR_HEIGHT, HEALTH_COLORS.high).setOrigin(0));
+    for (let i = 1; i < BAR_SEGMENTS; i++) {
+      fixed(scene.add.rectangle(barX + (BAR_WIDTH / BAR_SEGMENTS) * i, barY, 2, BAR_HEIGHT, PANEL.fill).setOrigin(0.5, 0));
+    }
+    this.healthText = text(barX + BAR_WIDTH + 10, barY - 3, 15);
+    this.districtText = text(PAD + 12, PAD + 34, 12, UI_COLORS.label);
 
     // Wave, top centre.
-    this.waveText = text(GAME_WIDTH / 2, PAD - 4, 24).setOrigin(0.5, 0);
-    this.waveStatusText = text(GAME_WIDTH / 2, PAD + 26, 14, UI_COLORS.label).setOrigin(0.5, 0);
+    panel(GAME_WIDTH / 2 - 120, PAD, 240, 54, ACCENT.wave, 'top');
+    this.waveText = text(GAME_WIDTH / 2, PAD + 6, 22).setOrigin(0.5, 0);
+    this.waveStatusText = text(GAME_WIDTH / 2, PAD + 33, 12, UI_COLORS.label).setOrigin(0.5, 0);
 
     // Coins and run time, top right.
-    text(GAME_WIDTH - PAD, PAD, 12, UI_COLORS.label).setOrigin(1, 0).setText('COINS');
-    this.coinsText = text(GAME_WIDTH - PAD, PAD + 14, 24).setOrigin(1, 0);
-    this.timeText = text(GAME_WIDTH - PAD, PAD + 44, 14, UI_COLORS.label).setOrigin(1, 0);
+    panel(GAME_WIDTH - PAD - 160, PAD, 160, 54, ACCENT.coin, 'right');
+    icon(GAME_WIDTH - PAD - 148, PAD + 18, 'hud-coin');
+    this.coinsText = text(GAME_WIDTH - PAD - 14, PAD + 5, 24, UI_COLORS.coin).setOrigin(1, 0);
+    this.timeText = text(GAME_WIDTH - PAD - 14, PAD + 34, 12, UI_COLORS.label).setOrigin(1, 0);
 
-    // Weapon in hand above a row of every weapon's slot, bottom left.
-    text(PAD, GAME_HEIGHT - PAD - 64, 12, UI_COLORS.label).setText('WEAPON');
-    this.weaponText = text(PAD, GAME_HEIGHT - PAD - 26, 22).setOrigin(0, 1);
+    // Weapon, bottom left: icon, name and ammunition, then a row of every weapon's slot.
+    const wy = GAME_HEIGHT - PAD - 70;
+    panel(PAD, wy, 360, 70, ACCENT.weapon, 'left');
+    this.weaponIcon = icon(PAD + 14, wy + 20, weaponIconKey('pistol'));
+    this.weaponText = text(PAD + 76, wy + 30, 18).setOrigin(0, 1);
+    // No weapon uses ammunition yet; the readout is ready for when one does.
+    text(PAD + 262, wy + 28, 11, UI_COLORS.label).setOrigin(0, 1).setText('AMMO');
+    text(PAD + 300, wy + 31, 18).setOrigin(0, 1).setText('\u221e');
     this.heldBacking = fixed(scene.add.rectangle(0, 0, 10, 20, SLOT_STYLE.held.backing).setOrigin(0, 1));
     this.slotTexts = {} as Record<WeaponId, Phaser.GameObjects.Text>;
     for (const id of WEAPON_IDS) {
       // Positioned in update, as labels change width when prices drop off.
-      this.slotTexts[id] = text(PAD, GAME_HEIGHT - PAD, 14).setOrigin(0, 1).setStroke(UI_COLORS.outline, 0);
+      this.slotTexts[id] = text(PAD + 14, GAME_HEIGHT - PAD - 10, 13).setOrigin(0, 1).setStroke(UI_COLORS.outline, 0);
     }
 
     // Controls, bottom centre.
-    text(GAME_WIDTH / 2, GAME_HEIGHT - PAD, 12, UI_COLORS.label)
+    text(GAME_WIDTH / 2, GAME_HEIGHT - PAD, 12, UI_COLORS.label, false)
       .setOrigin(0.5, 1)
-      .setText('WASD move   mouse aim   LMB fire');
+      .setText('WASD move  LMB fire  E buy  1-3/Q weapons  K shake  -/+ volume  M mute');
 
-    // Boss health under the wave counter, and the warning that comes before the boss.
+    // Boss health under the wave panel, and the warning that comes before the boss.
     const bossY = PAD + 62;
-    this.bossLabel = text(GAME_WIDTH / 2, bossY, 14, UI_COLORS.danger).setOrigin(0.5, 0);
-    const bossBack = fixed(scene.add.rectangle(GAME_WIDTH / 2 - BOSS_BAR_WIDTH / 2, bossY + 20, BOSS_BAR_WIDTH, BOSS_BAR_HEIGHT, 0x1a1f19)
-      .setOrigin(0).setStrokeStyle(1, 0x6a2a24));
-    this.bossFill = fixed(scene.add.rectangle(GAME_WIDTH / 2 - BOSS_BAR_WIDTH / 2, bossY + 20, BOSS_BAR_WIDTH, BOSS_BAR_HEIGHT, 0xc8553d)
+    this.bossLabel = text(GAME_WIDTH / 2, bossY, 13, UI_COLORS.danger).setOrigin(0.5, 0);
+    const bossBack = fixed(scene.add.rectangle(GAME_WIDTH / 2 - BOSS_BAR_WIDTH / 2, bossY + 20, BOSS_BAR_WIDTH, BOSS_BAR_HEIGHT, 0x2a1416)
+      .setOrigin(0).setStrokeStyle(1, ACCENT.boss));
+    this.bossFill = fixed(scene.add.rectangle(GAME_WIDTH / 2 - BOSS_BAR_WIDTH / 2, bossY + 20, BOSS_BAR_WIDTH, BOSS_BAR_HEIGHT, ACCENT.boss)
       .setOrigin(0));
     this.bossParts = [this.bossLabel, bossBack, this.bossFill];
     this.warningText = fixed(
       scene.add.text(GAME_WIDTH / 2, 275, '', {
-        fontFamily: 'monospace', fontSize: '28px', color: UI_COLORS.danger, align: 'center',
+        fontFamily: UI_FONT, fontSize: '28px', fontStyle: 'bold', color: UI_COLORS.danger, align: 'center',
         stroke: UI_COLORS.outline, strokeThickness: 6,
       }).setOrigin(0.5),
       BANNER_DEPTH,
     );
 
     // Interaction prompt and feedback, lower centre: clear of the player and the wave banner.
-    this.promptText = text(GAME_WIDTH / 2, GAME_HEIGHT - 70, 18).setOrigin(0.5, 1);
-    this.noticeText = text(GAME_WIDTH / 2, GAME_HEIGHT - 110, 20, UI_COLORS.info).setOrigin(0.5, 1);
+    this.promptText = text(GAME_WIDTH / 2, GAME_HEIGHT - 70, 17).setOrigin(0.5, 1);
+    this.noticeText = text(GAME_WIDTH / 2, GAME_HEIGHT - 108, 19, UI_COLORS.info).setOrigin(0.5, 1);
 
     this.bannerText = fixed(
       scene.add.text(GAME_WIDTH / 2, 185, '', {
-        fontFamily: 'monospace', fontSize: '32px', color: UI_COLORS.text, align: 'center',
+        fontFamily: UI_FONT, fontSize: '32px', fontStyle: 'bold', color: UI_COLORS.text, align: 'center',
         stroke: UI_COLORS.outline, strokeThickness: 6,
       }).setOrigin(0.5),
       BANNER_DEPTH,
@@ -177,7 +207,8 @@ export class Hud {
     this.coinsText.setText(String(state.coins));
     this.timeText.setText(formatDuration(state.elapsedMs));
     this.weaponText.setText(WEAPONS[state.weapon].name.toUpperCase());
-    let slotX = PAD;
+    if (this.weaponIcon.texture.key !== weaponIconKey(state.weapon)) this.weaponIcon.setTexture(weaponIconKey(state.weapon));
+    let slotX = PAD + 14;
     for (const id of WEAPON_IDS) {
       const owned = state.ownedWeapons.has(id);
       const slotState: SlotState = id === state.weapon ? 'held' : owned ? 'owned' : 'locked';

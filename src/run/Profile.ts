@@ -1,10 +1,15 @@
+import type { ShakeLevel } from '../fx/CameraFx';
+
 /**
  * The only data kept between runs and page loads: the personal high score and settings.
  * Stored as one JSON entry in localStorage; anything about a single run stays in `Run`.
  */
 export interface Settings {
-  /** Shake the camera when the player is hit. */
-  screenShake: boolean;
+  /** Screen shake and camera kick: full, reduced, or off. */
+  shake: ShakeLevel;
+  /** Master volume, 0 to 1. */
+  volume: number;
+  muted: boolean;
 }
 
 export interface Profile {
@@ -14,10 +19,11 @@ export interface Profile {
 }
 
 const STORAGE_KEY = 'dead-sector.profile';
-const VERSION = 1;
+const VERSION = 2;
+const SHAKE_LEVELS: readonly ShakeLevel[] = ['full', 'reduced', 'off'];
 
 function defaultProfile(): Profile {
-  return { highScore: 0, settings: { screenShake: true } };
+  return { highScore: 0, settings: { shake: 'full', volume: 0.7, muted: false } };
 }
 
 /** localStorage, or null where it is missing or blocked (some privacy modes throw on access). */
@@ -31,7 +37,8 @@ function storage(): Storage | null {
 
 /**
  * Read the saved profile. A missing, corrupt or older entry falls back to the defaults field
- * by field, so one bad value never costs the rest.
+ * by field, so one bad value never costs the rest. Version 1 stored shake as a boolean
+ * `screenShake`; it maps to 'full' or 'off'.
  */
 export function loadProfile(): Profile {
   const profile = defaultProfile();
@@ -47,8 +54,11 @@ export function loadProfile(): Profile {
     profile.highScore = highScore;
   }
   if (typeof settings === 'object' && settings !== null) {
-    const { screenShake } = settings as Partial<Record<keyof Settings, unknown>>;
-    if (typeof screenShake === 'boolean') profile.settings.screenShake = screenShake;
+    const { shake, volume, muted, screenShake } = settings as Partial<Record<keyof Settings | 'screenShake', unknown>>;
+    if (SHAKE_LEVELS.includes(shake as ShakeLevel)) profile.settings.shake = shake as ShakeLevel;
+    else if (typeof screenShake === 'boolean') profile.settings.shake = screenShake ? 'full' : 'off';
+    if (typeof volume === 'number' && volume >= 0 && volume <= 1) profile.settings.volume = volume;
+    if (typeof muted === 'boolean') profile.settings.muted = muted;
   }
   return profile;
 }
@@ -63,4 +73,9 @@ export function saveProfile(profile: Profile): void {
   } catch {
     // Keep playing; the profile simply isn't remembered.
   }
+}
+
+/** The next shake level in the cycle full, reduced, off. */
+export function nextShakeLevel(level: ShakeLevel): ShakeLevel {
+  return SHAKE_LEVELS[(SHAKE_LEVELS.indexOf(level) + 1) % SHAKE_LEVELS.length];
 }

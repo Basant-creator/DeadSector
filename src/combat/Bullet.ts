@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
+import type { WeaponId } from './weapons';
 
+/** Tracer texture from src/art/props.ts: 12 x 12, drawn along +x and rotated to the flight path. */
 const TEXTURE_KEY = 'bullet';
-const TEXTURE_SIZE = 8;
+const TEXTURE_SIZE = 12;
 const BODY_RADIUS = 3;
 
 /**
@@ -12,14 +14,8 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
   private expiresAt = 0;
   /** Damage this shot deals, set by the weapon that fired it. */
   damage = 0;
-
-  static createTexture(scene: Phaser.Scene): void {
-    const g = scene.make.graphics({}, false);
-    g.fillStyle(0xf2e3a0);
-    g.fillCircle(TEXTURE_SIZE / 2, TEXTURE_SIZE / 2, BODY_RADIUS);
-    g.generateTexture(TEXTURE_KEY, TEXTURE_SIZE, TEXTURE_SIZE);
-    g.destroy();
-  }
+  /** The weapon that fired it, for how hard its hit feels; null for bullets fired by other means. */
+  weapon: WeaponId | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, TEXTURE_KEY);
@@ -27,8 +23,9 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Launch from (x, y) along *angle*; the bullet removes itself after *lifetimeMs*. */
-  fire(x: number, y: number, angle: number, speed: number, lifetimeMs: number, damage: number): void {
+  fire(x: number, y: number, angle: number, speed: number, lifetimeMs: number, damage: number, weapon: WeaponId | null = null): void {
     this.damage = damage;
+    this.weapon = weapon;
     this.enableBody(true, x, y, true, true);
     // Set on every launch: the pool's group applies its own body defaults when it creates a
     // bullet, after the constructor has run.
@@ -43,8 +40,15 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.disableBody(true, true);
   }
 
+  /** A hit-stop held the bullet in place for *ms*: it keeps its full range. */
+  extendLife(ms: number): void {
+    this.expiresAt += ms;
+  }
+
   /** Called by the pool's group each frame while the bullet is active. */
   update(): void {
-    if (this.active && this.scene.time.now >= this.expiresAt) this.kill();
+    // A paused world (hit-stop) holds the bullet still; it must not run out of range meanwhile.
+    if (!this.active || this.scene.physics.world.isPaused) return;
+    if (this.scene.time.now >= this.expiresAt) this.kill();
   }
 }

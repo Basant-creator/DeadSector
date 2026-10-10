@@ -29,7 +29,7 @@ export class Weapon {
       if (!bullet) break;
       const fan = pellets > 1 ? (i / (pellets - 1) - 0.5) * spread : 0;
       const deviation = jitter > 0 ? Phaser.Math.FloatBetween(-jitter, jitter) : 0;
-      bullet.fire(x, y, angle + fan + deviation, bulletSpeed, lifetimeMs, damage);
+      bullet.fire(x, y, angle + fan + deviation, bulletSpeed, lifetimeMs, damage, this.def.id);
       fired++;
     }
     if (fired === 0) return false;

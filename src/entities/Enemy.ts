@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
+import { enemyTextureKey, enemyWalkAnim } from '../art/characters';
+import { ENEMY_WEIGHT, IMPACT } from '../combat/feel';
 import type { NavGrid } from '../world/NavGrid';
-import { ENEMIES, ENEMY_KINDS, type EnemyDef, type EnemyKind } from './enemies';
+import { ENEMIES, type EnemyDef, type EnemyKind } from './enemies';
 
 /** Emitted on the enemy, with the enemy as its argument, the one time it dies. */
 export const ENEMY_DIED = 'enemy-died';
@@ -11,62 +13,43 @@ export interface EnemyContext {
   readonly nav: NavGrid;
   /** Deal *amount* to the player. Returns whether it landed (not dead or invulnerable). */
   hurtPlayer(amount: number): boolean;
-  /** Camera shake for heavy impacts; does nothing when the player has turned shake off. */
-  shake(durationMs: number, intensity: number): void;
+  /** Camera shake for heavy impacts, scaled by the player's shake setting. */
+  shake(intensity: number, durationMs: number): void;
+  /** Play a sound effect (src/audio/sfx.ts). */
+  sound(key: string, options?: { volume?: number; detune?: number }): void;
+  /** Hold the fight still for *ms* (hit-stop), for impacts that should land hard. */
+  hitStop(ms: number): void;
 }
 
 const HIT_FLASH_MS = 70;
 const DEATH_FADE_MS = 180;
 
-const textureKey = (kind: EnemyKind) => `enemy-${kind}`;
-/** Square texture big enough for the body and the arms reaching past it. */
-const textureSize = (def: EnemyDef) => 2 * Math.ceil(def.radius * 1.5 + 4);
-
 /**
  * One enemy of any type; its `def` from `ENEMIES` sets every stat. Faces where it walks, with
- * arms reaching along +x (rotation 0).
+ * arms reaching along +x (rotation 0); its look and walk cycle come from `src/art/characters.ts`.
  */
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   readonly def: EnemyDef;
   private hp: number;
   private dead = false;
-
-  /** Draws one placeholder texture per enemy type: a body circle with two arms. */
-  static createTextures(scene: Phaser.Scene): void {
-    for (const kind of ENEMY_KINDS) {
-      const def = ENEMIES[kind];
-      const size = textureSize(def);
-      const c = size / 2;
-      const r = def.radius;
-      const armWidth = Math.max(4, Math.round(r / 3));
-      const armReach = Math.round(r * 0.4);
-      const armSpread = Math.round(r * 0.67);
-      const g = scene.make.graphics({}, false);
-      g.fillStyle(def.look.arms);
-      g.fillRect(c + armReach, c - armSpread, r + 1, armWidth);
-      g.fillRect(c + armReach, c + armSpread - armWidth, r + 1, armWidth);
-      g.fillStyle(def.look.body);
-      g.fillCircle(c, c, r);
-      if (def.look.ring !== undefined) {
-        g.lineStyle(2, def.look.ring);
-        g.strokeCircle(c, c, r - 1);
-      }
-      g.generateTexture(textureKey(kind), size, size);
-      g.destroy();
-    }
-  }
+  /** Knockback in progress: velocity at its start, and when it began and ends. */
+  private readonly knock = new Phaser.Math.Vector2();
+  private knockStartedAt = 0;
+  private knockUntil = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, kind: EnemyKind) {
-    super(scene, x, y, textureKey(kind));
+    super(scene, x, y, enemyTextureKey(kind));
     this.def = ENEMIES[kind];
     this.hp = this.def.maxHp;
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    const offset = textureSize(this.def) / 2 - this.def.radius;
+    // Circular body centred in the frame (src/art/characters.ts), so rotation never moves it.
+    const offset = this.width / 2 - this.def.radius;
     this.setCircle(this.def.radius, offset, offset);
     this.setCollideWorldBounds(true);
     // Below bullets and the player: an enemy on top of the player hid its hit flash.
     this.setDepth(1);
+    this.anims.play(enemyWalkAnim(kind));
   }
 
   get kind(): EnemyKind {
@@ -94,8 +77,38 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** One frame of behaviour: by default, follow the flow field toward the player. */
-  act(_now: number, ctx: EnemyContext): void {
-    if (!this.dead) this.pursue(ctx.nav.waypoint(this, ctx.player, this.radius));
+  act(now: number, ctx: EnemyContext): void {
+    if (this.dead) return;
+    if (now < this.knockUntil) {
+      // Drift to a stop along the shove, then pursue again. Walls still stop the body.
+      const left = (this.knockUntil - now) / IMPACT.knockbackMs;
+      this.setVelocity(this.knock.x * left, this.knock.y * left);
+      return;
+    }
+    this.pursue(ctx.nav.waypoint(this, ctx.player, this.radius));
+  }
+
+  /**
+   * Shove along *angle* at *speed* px/s, divided by this type's weight. Shoves landing during
+   * one already under way (shotgun pellets) add up, to `IMPACT.maxKnockback`.
+   */
+  knockback(angle: number, speed: number, now: number): void {
+    const weight = ENEMY_WEIGHT[this.def.kind];
+    if (this.dead || !Number.isFinite(weight)) return;
+    if (now >= this.knockUntil) {
+      this.knock.set(0, 0);
+      this.knockStartedAt = now;
+      this.knockUntil = now + IMPACT.knockbackMs;
+    }
+    this.knock.x += (Math.cos(angle) * speed) / weight;
+    this.knock.y += (Math.sin(angle) * speed) / weight;
+    if (this.knock.length() > IMPACT.maxKnockback) this.knock.setLength(IMPACT.maxKnockback);
+  }
+
+  /** A hit-stop held the fight for *ms*: push this enemy's timers back by it. */
+  shiftTimers(ms: number): void {
+    this.knockStartedAt += ms;
+    this.knockUntil += ms;
   }
 
   /**
@@ -137,6 +150,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
    */
   protected die(): void {
     this.dead = true;
+    this.anims.stop();
     this.setVelocity(0, 0);
     this.disableBody(false, false);
     this.setTint(0x3a1d18);

@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { LAYER } from '../art/layers';
+import { IMPACT } from '../combat/feel';
 import { Enemy, type EnemyContext } from './Enemy';
 import { type AttackPhase, GIANT, type GiantAttackKind } from './giantRules';
 
@@ -34,12 +36,12 @@ export class Giant extends Enemy {
   private attack: Attack | null = null;
   private nextAttackAt: number;
   private readonly telegraph: Phaser.GameObjects.Graphics;
-  private rock: Phaser.GameObjects.Arc | null = null;
+  private rock: Phaser.GameObjects.Image | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'giant');
     // Above the ground and buildings, below every body.
-    this.telegraph = scene.add.graphics().setDepth(0.5);
+    this.telegraph = scene.add.graphics().setDepth(LAYER.telegraph);
     this.nextAttackAt = scene.time.now + GIANT.attackCooldownMs;
   }
 
@@ -86,6 +88,18 @@ export class Giant extends Enemy {
       length: kind === 'charge' ? this.laneLength(dir, ctx) : 0,
       target: { x: player.x, y: player.y },
     };
+    // The charge announces itself by ear as well as on the ground.
+    if (kind === 'charge') ctx.sound('sfx-roar');
+  }
+
+  /** A hit-stop held the fight for *ms*: the attack in progress keeps its full timing. */
+  override shiftTimers(ms: number): void {
+    super.shiftTimers(ms);
+    this.nextAttackAt += ms;
+    if (this.attack) {
+      this.attack.phaseStartedAt += ms;
+      this.attack.phaseEndsAt += ms;
+    }
   }
 
   override halt(): void {
@@ -159,7 +173,8 @@ export class Giant extends Enemy {
     a.phaseStartedAt = now;
     if (a.kind === 'slam') {
       a.phaseEndsAt = now + GIANT.slam.activeMs;
-      ctx.shake(220, 0.012);
+      ctx.shake(IMPACT.shake.heavy.intensity, IMPACT.shake.heavy.ms);
+      ctx.sound('sfx-slam');
     } else if (a.kind === 'charge') {
       a.phaseEndsAt = now + (a.length / GIANT.charge.speed) * 1000;
       a.from = { x: this.x, y: this.y };
@@ -167,7 +182,8 @@ export class Giant extends Enemy {
       a.phaseEndsAt = now + GIANT.debris.flightMs;
       a.from = { x: this.x, y: this.y };
       a.target = { x: ctx.player.x, y: ctx.player.y };
-      this.rock = this.scene.add.circle(this.x, this.y, 9, 0x8a7a6a).setStrokeStyle(2, 0x5a4e44).setDepth(4);
+      ctx.sound('sfx-whoosh');
+      this.rock = this.scene.add.image(this.x, this.y, 'fx-rock').setDepth(4);
     }
   }
 
@@ -185,7 +201,7 @@ export class Giant extends Enemy {
     if (a.resolved) return;
     if (Phaser.Math.Distance.BetweenPoints(this, ctx.player) <= GIANT.slam.radius) {
       a.resolved = true;
-      ctx.hurtPlayer(GIANT.slam.damage);
+      if (ctx.hurtPlayer(GIANT.slam.damage)) ctx.hitStop(IMPACT.hitStop.giantAttack);
     }
   }
 
@@ -208,7 +224,7 @@ export class Giant extends Enemy {
     this.rock.setPosition(
       Phaser.Math.Linear(a.from.x, a.target.x, t),
       Phaser.Math.Linear(a.from.y, a.target.y, t) - Math.sin(t * Math.PI) * THROW_ARC,
-    );
+    ).setRotation(t * Math.PI * 3);
     if (t >= 1) this.landRock(a, ctx);
   }
 
@@ -217,9 +233,10 @@ export class Giant extends Enemy {
     a.resolved = true;
     this.rock?.destroy();
     this.rock = null;
-    ctx.shake(120, 0.006);
+    ctx.shake(IMPACT.shake.rockLand.intensity, IMPACT.shake.rockLand.ms);
+    ctx.sound('sfx-crash');
     if (Phaser.Math.Distance.BetweenPoints(a.target, ctx.player) <= GIANT.debris.impactRadius) {
-      ctx.hurtPlayer(GIANT.debris.damage);
+      if (ctx.hurtPlayer(GIANT.debris.damage)) ctx.hitStop(IMPACT.hitStop.giantAttack);
     }
   }
 

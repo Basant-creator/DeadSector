@@ -1,8 +1,15 @@
 import Phaser from 'phaser';
-import { STARTING_WEAPON, type WeaponDef, WEAPON_IDS, WEAPONS } from '../combat/weapons';
+import { PLAYER_RECOIL_FRAME, playerTextureKey, playerWalkAnim } from '../art/characters';
+import { STARTING_WEAPON, type WeaponDef, WEAPONS } from '../combat/weapons';
 
 /** Movement speed in px/s. Diagonals are normalized, so this holds in all eight directions. */
-export const PLAYER_SPEED = 180;
+export const PLAYER_SPEED = 230;
+/**
+ * From standing to full speed, and from full speed to a stop, in ms. Short enough to feel
+ * immediate (a full reversal takes about 85 ms), long enough to read as weight, not a teleport.
+ */
+const ACCEL_MS = 50;
+const DECEL_MS = 35;
 export const PLAYER_MAX_HP = 100;
 /**
  * After taking damage the player cannot be damaged again for this long. Contact damage is
@@ -18,8 +25,7 @@ export function muzzleOffset(weapon: WeaponDef): number {
   return BARREL_START + weapon.barrel.length;
 }
 
-const textureKey = (weapon: WeaponDef) => `player-${weapon.id}`;
-/** Wide enough for the longest barrel. */
+/** Frame size of the player's sprite sheets (src/art/characters.ts), wide enough for the longest barrel. */
 const TEXTURE_SIZE = 64;
 const BODY_RADIUS = 14;
 const HIT_FLASH_MS = 90;
@@ -27,7 +33,7 @@ const BLINK_PERIOD_MS = 80;
 
 type MoveKeys = Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
 
-/** Placeholder player: WASD movement, faces the mouse cursor independently of movement direction. */
+/** The player: WASD movement, faces the mouse cursor independently of movement direction. */
 export class Player extends Phaser.Physics.Arcade.Sprite {
   private readonly keys: MoveKeys;
   private readonly moveDir = new Phaser.Math.Vector2();
@@ -35,27 +41,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private hp = PLAYER_MAX_HP;
   private invulnerableUntil = 0;
   private dead = false;
-
-  /**
-   * Draws one placeholder texture per weapon: a circle with that weapon's barrel pointing
-   * along +x (rotation 0), so the weapon in hand shows on the player.
-   */
-  static createTextures(scene: Phaser.Scene): void {
-    const c = TEXTURE_SIZE / 2;
-    for (const id of WEAPON_IDS) {
-      const { barrel } = WEAPONS[id];
-      const g = scene.make.graphics({}, false);
-      g.fillStyle(0xc8d6c0);
-      g.fillCircle(c, c, BODY_RADIUS);
-      g.fillStyle(barrel.color);
-      g.fillRect(c + BARREL_START, c - barrel.width / 2, barrel.length, barrel.width);
-      g.generateTexture(textureKey(WEAPONS[id]), TEXTURE_SIZE, TEXTURE_SIZE);
-      g.destroy();
-    }
-  }
+  private weapon: WeaponDef = WEAPONS[STARTING_WEAPON];
+  private readonly velocity = new Phaser.Math.Vector2();
+  private lastUpdateAt = 0;
+  private recoilUntil = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, textureKey(WEAPONS[STARTING_WEAPON]));
+    super(scene, x, y, playerTextureKey(WEAPONS[STARTING_WEAPON]));
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
@@ -79,9 +71,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     };
   }
 
-  /** Show *weapon* in hand. Every texture is the same size, so the body does not move. */
+  /** Show *weapon* in hand. Every sheet has the same frame size, so the body does not move. */
   holdWeapon(weapon: WeaponDef): void {
-    this.setTexture(textureKey(weapon));
+    this.weapon = weapon;
+    this.setTexture(playerTextureKey(weapon), 0);
   }
 
   /** Current speed in px/s, for the debug readout. */
@@ -121,36 +114,83 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return true;
   }
 
+  /** Show the recoil pose for *ms*. Presentation only: the aim and the shot are untouched. */
+  recoil(now: number, ms: number): void {
+    this.recoilUntil = Math.max(this.recoilUntil, now + ms);
+  }
+
+  /** A hit-stop held the game for *ms*: the invulnerability window must not run out during it. */
+  shiftTimers(ms: number): void {
+    this.invulnerableUntil += ms;
+    this.lastUpdateAt += ms;
+  }
+
   update(now: number): void {
     if (this.dead) return;
-    this.updateMovement();
+    const dt = this.lastUpdateAt > 0 ? Phaser.Math.Clamp(now - this.lastUpdateAt, 0, 50) : 16;
+    this.lastUpdateAt = now;
+    this.updateMovement(dt);
     this.updateAim();
+    this.animate(now);
     // Blink while invulnerable, so the window after a hit is visible.
     const blinking = now < this.invulnerableUntil && Math.floor(now / BLINK_PERIOD_MS) % 2 === 0;
     this.setAlpha(blinking ? 0.35 : 1);
   }
 
+  /** Recoil pose after a shot, else the walk cycle while moving, else standing. Presentation only. */
+  private animate(now: number): void {
+    if (now < this.recoilUntil) {
+      if (this.anims.isPlaying) this.anims.stop();
+      this.setFrame(PLAYER_RECOIL_FRAME);
+      return;
+    }
+    if (this.moveDir.lengthSq() > 0) {
+      this.anims.play(playerWalkAnim(this.weapon), true);
+    } else if (this.anims.isPlaying || Number(this.frame.name) === PLAYER_RECOIL_FRAME) {
+      this.anims.stop();
+      this.setFrame(0);
+    }
+  }
+
   private die(): void {
     this.dead = true;
+    this.anims.stop();
     this.setVelocity(0, 0);
     this.setAlpha(1);
     this.setTint(0x4a4a4a);
   }
 
-  private updateMovement(): void {
+  /**
+   * Steer the velocity toward the input at a fixed rate: full speed in ACCEL_MS, a stop in
+   * DECEL_MS. The target is normalized first, so diagonals stay at PLAYER_SPEED.
+   */
+  private updateMovement(dt: number): void {
     const { up, down, left, right } = this.keys;
     this.moveDir
       .set(Number(right.isDown) - Number(left.isDown), Number(down.isDown) - Number(up.isDown))
       .normalize()
       .scale(PLAYER_SPEED);
-    this.setVelocity(this.moveDir.x, this.moveDir.y);
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    this.velocity.copy(body.velocity);
+    const rate = PLAYER_SPEED / (this.moveDir.lengthSq() > 0 ? ACCEL_MS : DECEL_MS);
+    const dx = this.moveDir.x - this.velocity.x;
+    const dy = this.moveDir.y - this.velocity.y;
+    const gap = Math.hypot(dx, dy);
+    const step = rate * dt;
+    if (gap <= step) this.velocity.copy(this.moveDir);
+    else this.velocity.set(this.velocity.x + (dx / gap) * step, this.velocity.y + (dy / gap) * step);
+    this.setVelocity(this.velocity.x, this.velocity.y);
   }
 
   private updateAim(): void {
     // Re-project the pointer every frame: pointer.worldX/Y only refresh on mouse events,
-    // so they go stale while the camera scrolls under a stationary cursor.
+    // so they go stale while the camera scrolls under a stationary cursor. Project through the
+    // camera's view, not its render matrix: screen shake offsets the matrix, and the aim must
+    // not shake with it.
     const pointer = this.scene.input.activePointer;
-    this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y, this.aimPoint);
+    const camera = this.scene.cameras.main;
+    const view = camera.worldView;
+    this.aimPoint.set(view.x + (pointer.x - camera.x) / camera.zoom, view.y + (pointer.y - camera.y) / camera.zoom);
     this.setRotation(Phaser.Math.Angle.Between(this.x, this.y, this.aimPoint.x, this.aimPoint.y));
   }
 }

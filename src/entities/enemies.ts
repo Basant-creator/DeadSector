@@ -21,39 +21,28 @@ export interface EnemyDef {
    * been walked from every spawn point.
    */
   readonly radius: number;
-  readonly look: {
-    readonly body: number;
-    readonly arms: number;
-    /** Ring drawn around the body, for types that should stand out at a glance. */
-    readonly ring?: number;
-  };
 }
 
 export const ENEMIES: Readonly<Record<EnemyKind, EnemyDef>> = {
   // The basic enemy: slow, and dangerous only in numbers.
   walker: {
     kind: 'walker', name: 'Walker', maxHp: 30, speed: 45, contactDamage: 10, coinReward: 4, radius: 15,
-    look: { body: 0x9c4a3c, arms: 0x6e3329 },
   },
   // Fast and fragile: twice a Walker's speed (half the player's), dies to two pistol shots.
   runner: {
     kind: 'runner', name: 'Runner', maxHp: 20, speed: 90, contactDamage: 12, coinReward: 6, radius: 12,
-    look: { body: 0xc8783c, arms: 0x8a4e24 },
   },
   // Slow and heavy: soaks fire and hits hard.
   brute: {
     kind: 'brute', name: 'Brute', maxHp: 120, speed: 32, contactDamage: 25, coinReward: 12, radius: 20,
-    look: { body: 0x6a2a24, arms: 0x4a1a16 },
   },
   // Quick, tough and well rewarded.
   elite: {
     kind: 'elite', name: 'Elite', maxHp: 75, speed: 65, contactDamage: 15, coinReward: 18, radius: 16,
-    look: { body: 0x7a3c8a, arms: 0x4e2458, ring: 0xd0a0e0 },
   },
   // A rare boss, never part of a wave's roster: see `giantRules.ts`.
   giant: {
     kind: 'giant', name: 'Giant', maxHp: 1200, speed: 30, contactDamage: 30, coinReward: 60, radius: 26,
-    look: { body: 0x4e5a3e, arms: 0x343c2a, ring: 0xc8553d },
   },
 };
 

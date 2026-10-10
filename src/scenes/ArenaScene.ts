@@ -1,11 +1,17 @@
 import Phaser from 'phaser';
+import { Sfx } from '../audio/sfx';
 import { Arsenal } from '../combat/Arsenal';
 import { Bullet } from '../combat/Bullet';
-import { type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/weapons';
+import { HEAVY_KINDS, IMPACT, WEAPON_FEEL } from '../combat/feel';
+import { type WeaponDef, type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/weapons';
 import { Enemy, type EnemyContext } from '../entities/Enemy';
-import { ENEMIES } from '../entities/enemies';
+import { ENEMIES, type EnemyKind } from '../entities/enemies';
+import { Giant } from '../entities/Giant';
 import { muzzleOffset, Player, PLAYER_MAX_HP } from '../entities/Player';
-import { loadProfile, type Profile, saveProfile } from '../run/Profile';
+import { CameraFx } from '../fx/CameraFx';
+import { Fx } from '../fx/Fx';
+import { HitStop } from '../fx/HitStop';
+import { loadProfile, nextShakeLevel, type Profile, saveProfile } from '../run/Profile';
 import { Run, type RunOutcome } from '../run/Run';
 import { GameOverScreen } from '../ui/GameOverScreen';
 import { Hud, type HudState, type NoticeTone } from '../ui/Hud';
@@ -19,6 +25,11 @@ import { LOCKER_REACH } from '../world/WeaponLocker';
 /** How long a notice such as "not enough coins" stays up. */
 const NOTICE_MS = 2200;
 const SLOT_KEYS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+const VOLUME_STEP = 0.1;
+/** Hits on one enemy within this window share one blood spray and one sound. */
+const HIT_FEEDBACK_MS = 50;
+/** Death sounds pitched by size: small bodies higher, big ones lower, in cents. */
+const DEATH_DETUNE: Readonly<Record<EnemyKind, number>> = { walker: 0, runner: 350, brute: -450, elite: -150, giant: -1000 };
 
 /** The city: a player and their weapons, waves of enemies, things to buy, a following camera. */
 export class ArenaScene extends Phaser.Scene {
@@ -34,6 +45,13 @@ export class ArenaScene extends Phaser.Scene {
   private profile!: Profile;
   private hud!: Hud;
   private enemyContext!: EnemyContext;
+  /** Presentation only: told what happened, never asked. */
+  private fx!: Fx;
+  private sfx!: Sfx;
+  private cameraFx!: CameraFx;
+  private hitStop!: HitStop;
+  /** When each enemy last showed hit feedback; hits closer together than this share it. */
+  private hitFeedbackAt = new WeakMap<Enemy, number>();
   private gameOver: GameOverScreen | null = null;
   private notice = { text: '', tone: 'info' as NoticeTone, until: 0 };
 
@@ -46,6 +64,12 @@ export class ArenaScene extends Phaser.Scene {
     this.profile = loadProfile();
     this.gameOver = null;
     this.notice = { text: '', tone: 'info', until: 0 };
+    this.hitFeedbackAt = new WeakMap();
+    // The physics world outlives the scene: never start a run inside a previous run's hit-stop.
+    this.physics.world.resume();
+    this.sfx = new Sfx(this);
+    this.sfx.configure(this.profile.settings.volume, this.profile.settings.muted);
+    this.hitStop = new HitStop(() => this.physics.world.pause(), (ms) => this.afterHitStop(ms));
 
     // World bounds default to the canvas size; widen them to the whole city.
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -65,7 +89,10 @@ export class ArenaScene extends Phaser.Scene {
       canSpawnAt: (point) => this.city.nav.isReachable(point),
       enemies: this.enemies,
       player: this.player,
-      onEnemyKilled: (enemy) => this.run.recordKill(enemy.coinReward),
+      onEnemyKilled: (enemy) => {
+        this.run.recordKill(enemy.coinReward);
+        this.killFeedback(enemy);
+      },
       onWaveCleared: (_wave, last) => {
         this.run.recordWaveCleared();
         if (last) this.endRun('cleared');
@@ -74,7 +101,12 @@ export class ArenaScene extends Phaser.Scene {
     this.purchasables = this.createPurchasables();
 
     this.physics.add.collider(this.enemies, walls);
-    this.physics.add.collider(this.arsenal.bullets, walls, (bullet) => (bullet as Bullet).kill());
+    this.physics.add.collider(this.arsenal.bullets, walls, (b) => {
+      const bullet = b as Bullet;
+      bullet.kill();
+      this.fx.impact(bullet.x, bullet.y);
+      this.sfx.play('sfx-impact', { volume: 0.35 });
+    });
     this.physics.add.overlap(this.arsenal.bullets, this.enemies, (a, b) => this.onBulletHitsEnemy(a, b));
     this.physics.add.overlap(this.player, this.enemies, (a, b) => this.onEnemyTouchesPlayer(a, b));
 
@@ -84,37 +116,49 @@ export class ArenaScene extends Phaser.Scene {
     // roundPixels must stay off: Phaser floors the scroll after lerping, which swallows the final
     // sub-pixel steps and parks the camera up to 9 px off-centre with lerp 0.1.
     camera.startFollow(this.player, false, 0.1, 0.1);
+    this.cameraFx = new CameraFx(camera, this.profile.settings.shake);
 
+    this.fx = new Fx(this);
     this.hud = new Hud(this);
     this.enemyContext = {
       player: this.player,
       nav: this.city.nav,
       hurtPlayer: (amount) => this.damagePlayer(amount),
-      shake: (durationMs, intensity) => {
-        if (this.profile.settings.screenShake) this.cameras.main.shake(durationMs, intensity);
-      },
+      shake: (intensity, durationMs) => this.cameraFx.shake(intensity, durationMs, this.time.now),
+      sound: (key, options) => this.sfx.play(key, options),
+      hitStop: (ms) => this.hitStop.trigger(ms, this.time.now),
     };
     // The scene's keyboard plugin drops these listeners on shutdown, so restarts never stack them.
-    const keyboard = this.input.keyboard;
-    keyboard?.on('keydown-E', () => this.tryPurchase());
-    keyboard?.on('keydown-Q', () => this.switchWeapon(() => this.arsenal.cycle()));
+    this.onKey('keydown-E', () => this.tryPurchase());
+    this.onKey('keydown-Q', () => this.switchWeapon(() => this.arsenal.cycle()));
     for (const id of WEAPON_IDS) {
-      keyboard?.on(`keydown-${SLOT_KEYS[WEAPONS[id].slot - 1]}`, () => this.selectWeapon(id));
+      this.onKey(`keydown-${SLOT_KEYS[WEAPONS[id].slot - 1]}`, () => this.selectWeapon(id));
     }
+    // Settings work in play and on the end screen alike, and are saved at once.
+    this.onKey('keydown-K', () => this.cycleShake());
+    this.onKey('keydown-M', () => this.toggleMute());
+    // By the character typed, not the key code: Firefox codes - and = differently.
+    this.onKey('keydown', (event) => {
+      if (event.key === '-' || event.key === '_') this.changeVolume(-VOLUME_STEP);
+      else if (event.key === '=' || event.key === '+') this.changeVolume(VOLUME_STEP);
+    });
   }
 
   update(): void {
     const now = this.time.now;
+    // During a hit-stop the fight holds still: no movement, firing, enemies or spawns. Effects,
+    // the HUD and input carry on.
+    const held = this.hitStop.update(now);
 
-    if (!this.run.isOver) {
+    if (!this.run.isOver && !held) {
       this.player.update(now);
       if (this.input.activePointer.leftButtonDown()) {
         const angle = this.player.aimAngle;
-        const muzzle = muzzleOffset(this.arsenal.current.def);
-        this.arsenal.tryFire(now,
-          this.player.x + Math.cos(angle) * muzzle,
-          this.player.y + Math.sin(angle) * muzzle,
-          angle);
+        const weapon = this.arsenal.current.def;
+        const muzzle = muzzleOffset(weapon);
+        const mx = this.player.x + Math.cos(angle) * muzzle;
+        const my = this.player.y + Math.sin(angle) * muzzle;
+        if (this.arsenal.tryFire(now, mx, my, angle)) this.shotFeedback(weapon, angle, mx, my, now);
       }
       this.city.nav.setTarget(this.player);
       // A copy: an enemy dying mid-loop leaves the group.
@@ -122,7 +166,85 @@ export class ArenaScene extends Phaser.Scene {
       this.director.update(now);
     }
 
+    this.fx.update(now);
     this.hud.update(this.hudState(now));
+  }
+
+  /**
+   * Listen for a key event, acting on each DOM event once. Phaser re-runs a step's whole key
+   * queue every time another key event arrives in that step, so with three or more key events in
+   * one frame an earlier keydown is emitted again: a toggle would flip back, a weapon key fire
+   * twice. Each handler remembers the events it has handled.
+   */
+  private onKey(event: string, handler: (event: KeyboardEvent) => void): void {
+    const handled = new WeakSet<KeyboardEvent>();
+    this.input.keyboard?.on(event, (e: KeyboardEvent) => {
+      if (handled.has(e)) return;
+      handled.add(e);
+      handler(e);
+    });
+  }
+
+  /**
+   * A shot left the barrel: flash, sound, recoil pose and camera kick. All presentation: the
+   * bullet's direction was fixed before this ran, and the kick moves the camera along the aim
+   * line, which leaves the aim angle unchanged.
+   */
+  private shotFeedback(weapon: WeaponDef, angle: number, x: number, y: number, now: number): void {
+    const feel = WEAPON_FEEL[weapon.id];
+    this.fx.muzzle(x, y, angle, weapon.id);
+    this.sfx.play(feel.sound, { volume: weapon.id === 'rifle' ? 0.7 : 1 });
+    this.player.recoil(now, feel.recoilMs);
+    this.cameraFx.kick(angle + Math.PI, feel.kickPx);
+    if (feel.shake) this.cameraFx.shake(feel.shake.intensity, feel.shake.ms, now);
+  }
+
+  /** An enemy died: once per enemy, from its single death event. */
+  private killFeedback(enemy: Enemy): void {
+    const now = this.time.now;
+    const giant = enemy.kind === 'giant';
+    this.fx.death(enemy.x, enemy.y, enemy.radius);
+    this.sfx.play('sfx-death', { detune: DEATH_DETUNE[enemy.kind], volume: giant ? 1 : 0.8 });
+    const shake = giant ? IMPACT.shake.heavy : IMPACT.shake.kill;
+    this.cameraFx.shake(shake.intensity, shake.ms, now);
+    const hold = giant ? IMPACT.hitStop.giantDeath : HEAVY_KINDS.has(enemy.kind) ? IMPACT.hitStop.heavyKill : IMPACT.hitStop.kill;
+    if (!this.run.isOver) this.hitStop.trigger(hold, now);
+  }
+
+  /** A hit-stop just ended after *ms*: physics resumes, and no timer loses the frozen time. */
+  private afterHitStop(ms: number): void {
+    this.physics.world.resume();
+    this.player.shiftTimers(ms);
+    this.arsenal.shiftTimers(ms);
+    for (const enemy of this.enemies.getChildren() as Enemy[]) enemy.shiftTimers(ms);
+  }
+
+  private cycleShake(): void {
+    const settings = this.profile.settings;
+    settings.shake = nextShakeLevel(settings.shake);
+    this.cameraFx.setLevel(settings.shake);
+    this.settingsChanged(`SCREEN SHAKE: ${settings.shake.toUpperCase()}`);
+  }
+
+  private toggleMute(): void {
+    const settings = this.profile.settings;
+    settings.muted = !settings.muted;
+    this.settingsChanged(settings.muted ? 'SOUND: MUTED' : `SOUND: ON, VOLUME ${Math.round(settings.volume * 100)}%`);
+  }
+
+  private changeVolume(delta: number): void {
+    const settings = this.profile.settings;
+    settings.volume = Math.round(Phaser.Math.Clamp(settings.volume + delta, 0, 1) * 10) / 10;
+    settings.muted = false;
+    this.settingsChanged(`VOLUME ${Math.round(settings.volume * 100)}%`);
+  }
+
+  private settingsChanged(notice: string): void {
+    const { settings } = this.profile;
+    this.sfx.configure(settings.volume, settings.muted);
+    saveProfile(this.profile);
+    this.gameOver?.showSettings(settings);
+    this.showNotice(notice, 'info');
   }
 
   /** The gate and one item per weapon locker, all bought through `tryPurchase`. */
@@ -254,25 +376,44 @@ export class ArenaScene extends Phaser.Scene {
     // A dead enemy takes no hits, so pellets landing after the killing one pass on.
     if (!bullet.active || enemy.isDead) return;
     bullet.kill();
+    const now = this.time.now;
     enemy.takeDamage(bullet.damage);
+    const feel = bullet.weapon ? WEAPON_FEEL[bullet.weapon] : null;
+    if (feel) enemy.knockback(bullet.rotation, feel.knockback, now);
+    // One spray and one sound per enemy per burst: a blast's six pellets can land a frame or two
+    // apart, yet should read as one hit. Rifle shots, 100 ms apart, each still get their own.
+    if (now - (this.hitFeedbackAt.get(enemy) ?? -Infinity) < HIT_FEEDBACK_MS) return;
+    this.hitFeedbackAt.set(enemy, now);
+    const giant = enemy.kind === 'giant';
+    this.fx.blood(bullet.x, bullet.y, bullet.rotation, giant);
+    this.sfx.play('sfx-hit', { detune: giant ? -800 : 0, volume: giant ? 1 : 0.75 });
+    if (bullet.weapon === 'pistol' || giant) this.cameraFx.shake(IMPACT.shake.hit.intensity, IMPACT.shake.hit.ms, now);
   }
 
   private onEnemyTouchesPlayer(a: unknown, b: unknown): void {
     const enemy = (a instanceof Enemy ? a : b) as Enemy;
     if (enemy.isDead) return;
     // Fires every step the two overlap; the player's invulnerability window turns that into
-    // one hit per touch.
-    this.damagePlayer(enemy.contactDamage);
+    // one hit per touch. A Giant's touch (and its charge) lands like a heavy attack.
+    this.damagePlayer(enemy.contactDamage, enemy instanceof Giant);
   }
 
   /**
    * Every hit on the player goes through here: touches and the Giant's attacks alike. Returns
    * whether it landed; the invulnerability window after a hit absorbs the rest.
    */
-  private damagePlayer(amount: number): boolean {
-    if (this.run.isOver || !this.player.takeDamage(amount, this.time.now)) return false;
-    if (this.profile.settings.screenShake) this.cameras.main.shake(120, 0.006);
-    if (this.player.isDead) this.endRun('died');
+  private damagePlayer(amount: number, heavy = false): boolean {
+    const now = this.time.now;
+    if (this.run.isOver || !this.player.takeDamage(amount, now)) return false;
+    const shake = heavy ? IMPACT.shake.heavy : IMPACT.shake.playerHurt;
+    this.cameraFx.shake(shake.intensity, shake.ms, now);
+    this.fx.playerHurt();
+    this.sfx.play('sfx-hurt');
+    if (this.player.isDead) {
+      this.endRun('died');
+      return true;
+    }
+    this.hitStop.trigger(heavy ? IMPACT.hitStop.giantAttack : IMPACT.hitStop.playerHurt, now);
     return true;
   }
 
@@ -280,6 +421,8 @@ export class ArenaScene extends Phaser.Scene {
   private endRun(outcome: RunOutcome): void {
     if (this.run.isOver) return;
     const now = this.time.now;
+    // Nothing waits on a hit-stop: the end screen and restart come at once.
+    this.hitStop.release(now);
     this.run.end(outcome, now);
     this.director.stop();
     // A cleared run leaves the player standing; stop it where it is.
@@ -298,20 +441,10 @@ export class ArenaScene extends Phaser.Scene {
       waveCount: this.director.waveCount,
       highScore: this.profile.highScore,
       newHighScore,
-      screenShake: this.profile.settings.screenShake,
+      settings: this.profile.settings,
     });
 
-    // The scene's keyboard plugin drops these listeners on shutdown, so a restart starts clean.
-    // [1] selects the pistol in play; the weapon handlers ignore it once the run is over.
-    const keyboard = this.input.keyboard;
-    keyboard?.once('keydown-R', () => this.scene.restart());
-    keyboard?.on('keydown-ONE', () => this.toggleScreenShake());
-  }
-
-  private toggleScreenShake(): void {
-    const settings = this.profile.settings;
-    settings.screenShake = !settings.screenShake;
-    saveProfile(this.profile);
-    this.gameOver?.setScreenShake(settings.screenShake);
+    // The scene's keyboard plugin drops this listener on shutdown, so a restart starts clean.
+    this.input.keyboard?.once('keydown-R', () => this.scene.restart());
   }
 }

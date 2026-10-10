@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { LAYER } from '../art/layers';
+import { lockerKey } from '../art/props';
 import { type WeaponId, WEAPONS } from '../combat/weapons';
 import type { Point } from '../waves/WaveDirector';
 
@@ -25,17 +27,15 @@ export class WeaponLocker {
 
   constructor(scene: Phaser.Scene, placement: LockerPlacement) {
     this.weapon = placement.weapon;
-    const def = WEAPONS[placement.weapon];
     const { wall, facing } = placement;
     const out = facing === 'down' ? 1 : -1;
     this.standAt = { x: wall.x, y: wall.y + out * 28 };
 
-    // The rack sits inside the wall's edge, so it never pokes into the walkable street.
-    scene.add.rectangle(wall.x, wall.y - out * 9, 80, 18, 0x23282a).setStrokeStyle(2, 0xc8b45a);
-    scene.add.rectangle(wall.x, wall.y - out * 9, def.barrel.length * 2, def.barrel.width, def.barrel.color);
+    // The cabinet sits inside the wall's edge, so it never pokes into the walkable street.
+    scene.add.image(wall.x, wall.y - out * 10, lockerKey(placement.weapon)).setDepth(LAYER.props);
     this.sign = scene.add
       .text(wall.x, wall.y - out * 26, '', {
-        fontFamily: 'monospace', fontSize: '13px', color: '#d9c46a', stroke: '#0b0d0b', strokeThickness: 4,
+        fontFamily: '"Courier New", Courier, monospace', fontSize: '13px', fontStyle: 'bold', color: '#d9c46a', stroke: '#08090c', strokeThickness: 4,
       })
       .setOrigin(0.5, 0.5)
       .setDepth(4);

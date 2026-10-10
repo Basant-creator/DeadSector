@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { LAYER } from '../art/layers';
 import type { Point } from '../waves/WaveDirector';
 import { type TileRect, tileRectToWorld } from './cityMap';
 
@@ -16,7 +17,10 @@ const OPEN_MS = 350;
 export class Gate {
   readonly rect: TileRect;
   readonly centre: Point;
+  /** The collision body: invisible, like every solid. */
   readonly bars: Phaser.GameObjects.Rectangle;
+  /** What the player sees: a roll-up shutter (src/art/props.ts). */
+  readonly shutter: Phaser.GameObjects.Image;
   private readonly sign: Phaser.GameObjects.Text;
   private opened = false;
 
@@ -25,15 +29,13 @@ export class Gate {
     const { x, y, width, height } = tileRectToWorld(rect);
     this.centre = { x: x + width / 2, y: y + height / 2 };
 
-    // Top-left origin, so scaling the height rolls the bars up toward the lintel.
-    this.bars = scene.add.rectangle(x, y, width, height, 0x8a7a3a).setOrigin(0).setStrokeStyle(2, 0xc8b45a);
+    this.bars = scene.add.rectangle(x, y, width, height, 0x000000).setOrigin(0).setVisible(false);
     scene.physics.add.existing(this.bars, true);
-    // Posts either side of the opening, on the wall.
-    scene.add.rectangle(x, y - 6, width, 6, 0xc8b45a).setOrigin(0);
-    scene.add.rectangle(x, y + height, width, 6, 0xc8b45a).setOrigin(0);
+    // Top-left origin, so scaling the height rolls the shutter up toward the lintel.
+    this.shutter = scene.add.image(x, y, 'gate-shutter').setOrigin(0).setDepth(LAYER.props);
     this.sign = scene.add
       .text(x - 10, y - 12, `GATE ${GATE_COST}c`, {
-        fontFamily: 'monospace', fontSize: '14px', color: '#d9c46a', stroke: '#0b0d0b', strokeThickness: 4,
+        fontFamily: '"Courier New", Courier, monospace', fontSize: '14px', fontStyle: 'bold', color: '#d9c46a', stroke: '#08090c', strokeThickness: 4,
       })
       .setOrigin(1, 1);
   }
@@ -53,6 +55,6 @@ export class Gate {
     const scene = this.bars.scene;
     scene.physics.world.disable(this.bars);
     this.sign.setText('OPEN').setColor('#7fb069');
-    scene.tweens.add({ targets: this.bars, scaleY: 0.08, duration: OPEN_MS, ease: 'Quad.easeOut' });
+    scene.tweens.add({ targets: this.shutter, scaleY: 0.08, duration: OPEN_MS, ease: 'Quad.easeOut' });
   }
 }
