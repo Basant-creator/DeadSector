@@ -1,0 +1,99 @@
+{
+  "id": "REC-32",
+  "schemaVersion": "0.1.0",
+  "title": "Audio files are optional; placeholders are labelled, never presented as the soundtrack",
+  "intent": "Never depend on files that do not exist, and make it obvious when the music is a placeholder",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/audio/assets.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/placeholderMusic.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/sfx.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/BootScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/assets/audio/README.md",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "e76328f",
+      "description": "asset discovery and placeholder stems",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "probe_404.mjs",
+      "description": "only the favicon 404s; no audio file is requested that does not exist",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Audio files are found at build time by import.meta.glob in src/audio/assets.ts; nothing is requested that is not in the repo",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Music files are used only as a complete set of six stems of identical length; otherwise all six are placeholders, and the registry key musicSource says which",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "A file in src/assets/audio/sfx named after an effect key replaces its recipe; createSfx skips keys already loaded",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Only original or licensed audio; no Hotline Miami or other commercial soundtrack",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [
+    {
+      "statement": "No finished soundtrack exists; placeholder stems play until all six files are in src/assets/audio/music",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "reasons": [],
+  "symbols": [
+    "audioFiles",
+    "settleMusic",
+    "renderPlaceholderStems",
+    "createSfx"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "all textures and sounds are generated in code; no audio or image files in the repo"
+  },
+  "createdAt": 1791637727516,
+  "updatedAt": 1791637727516
+}

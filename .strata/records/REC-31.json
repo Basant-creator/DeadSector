@@ -1,0 +1,100 @@
+{
+  "id": "REC-31",
+  "schemaVersion": "0.1.0",
+  "title": "Adaptive music is six synced stems crossfaded per state on bar lines",
+  "intent": "Music follows the fight without abrupt cuts, using layered stems rather than switching tracks",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/audio/music.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/AudioManager.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "fade stems before the browser unlocked audio",
+      "status": "failed",
+      "failureReason": "play() reset every volume, so music started silent after a long wait; now nothing fades before start and start re-applies gains",
+      "confidence": "DECLARED",
+      "evidence": []
+    },
+    {
+      "approach": "hold every downward change four bars",
+      "status": "failed",
+      "failureReason": "the end of a run waited 8 s to settle; run-over now counts as an event",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "e76328f",
+      "description": "music director and player",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "audio.test.mjs",
+      "description": "changes land on bar lines, no flip-flop under 1 s enemy churn, no fade step above 1% per frame, stems start in sync",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "All six stems start together and never stop or seek during a run; state changes only change gains",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "MusicDirector decides only on bar lines; rising holds 1 bar, falling 4, and giant, blackout, leaving blackout and run over take the next bar",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Priority is blackout, then run over (calm), giant, intense (threat 7+), combat, calm",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Stem gains use an equal-power curve times the music volume; fades run on real time in update, with no tweens",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "MusicDirector",
+    "MusicPlayer",
+    "MUSIC",
+    "desiredState"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "audio suite 38/38"
+  },
+  "createdAt": 1791637726886,
+  "updatedAt": 1791637726886
+}

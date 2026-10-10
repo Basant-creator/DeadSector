@@ -1,0 +1,90 @@
+{
+  "id": "REC-33",
+  "schemaVersion": "0.1.0",
+  "title": "Three volume buses saved in profile v3, and a voice cap that ignores loops",
+  "intent": "Let players set master, music and effects separately, and keep crowds from becoming a wall of noise without starving effects",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/run/Profile.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/AudioManager.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/ui/GameOverScreen.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "count every playing sound against the 20-voice cap",
+      "status": "failed",
+      "failureReason": "music stems and the wind took 7 voices, leaving 13 for effects",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "e76328f",
+      "description": "volumes, profile v3, voice cap",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "runs.test.mjs",
+      "description": "v1 and v2 profiles migrate to v3 with music 0.6 and effects 1",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Master is scene.sound.volume; music is stem gain times the music volume; effects and loops are per-play volume times the effects volume",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "MAX_VOICES (20) counts only non-looping sounds; weapons and the player's or mech's own hurt always play",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Profile settings are version 3 (shake, volume, music, sfx, muted); older versions migrate rather than reset",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "AudioSettings",
+    "VOLUME_KEYS",
+    "changeVolume"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "effect voices peak at 3-7 in dense combat"
+  },
+  "createdAt": 1791637728127,
+  "updatedAt": 1791637728127
+}

@@ -1,0 +1,107 @@
+{
+  "id": "REC-30",
+  "schemaVersion": "0.1.0",
+  "title": "Gameplay announces events; AudioManager alone plays sound",
+  "intent": "Decouple presentation from gameplay so each event is heard once and future systems (pickups, blackouts, allies) only emit",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/events/GameEvents.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/AudioManager.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Giant.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Enemy.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/fx/Ambience.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "name the scene's bus field events",
+      "status": "failed",
+      "failureReason": "it shadows Phaser.Scene.events, so the field is called bus",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "e76328f",
+      "description": "event bus and AudioManager",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "audio.test.mjs",
+      "description": "38 checks, one sound per event including each Giant cue, nothing accumulates across four restarts",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Gameplay code never calls scene.sound; it emits on the run's GameEvents bus and AudioManager.listen holds the one cue table",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The bus and AudioManager live for one run and are destroyed on scene SHUTDOWN, so a restart never stacks listeners, loops or music",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "enemy-hit fires once per enemy per 50 ms burst; stomp hits are silent there and heard once in mech-stomp",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The Giant emits giant-attack per phase (windUp, active, recovery) and giant-rock-landed rather than playing sounds",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "GameEvents",
+    "AudioManager"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "10 E2E suites, 389 checks pass; build passes"
+  },
+  "createdAt": 1791637726234,
+  "updatedAt": 1791637726234
+}
