@@ -88,8 +88,7 @@ export class Giant extends Enemy {
       length: kind === 'charge' ? this.laneLength(dir, ctx) : 0,
       target: { x: player.x, y: player.y },
     };
-    // The charge announces itself by ear as well as on the ground.
-    if (kind === 'charge') ctx.sound('sfx-roar');
+    ctx.events.emit('giant-attack', { kind, phase: 'windUp' });
   }
 
   /** A hit-stop held the fight for *ms*: the attack in progress keeps its full timing. */
@@ -174,7 +173,6 @@ export class Giant extends Enemy {
     if (a.kind === 'slam') {
       a.phaseEndsAt = now + GIANT.slam.activeMs;
       ctx.shake(IMPACT.shake.heavy.intensity, IMPACT.shake.heavy.ms);
-      ctx.sound('sfx-slam');
     } else if (a.kind === 'charge') {
       a.phaseEndsAt = now + (a.length / GIANT.charge.speed) * 1000;
       a.from = { x: this.x, y: this.y };
@@ -182,9 +180,9 @@ export class Giant extends Enemy {
       a.phaseEndsAt = now + GIANT.debris.flightMs;
       a.from = { x: this.x, y: this.y };
       a.target = { x: ctx.player.x, y: ctx.player.y };
-      ctx.sound('sfx-whoosh');
       this.rock = this.scene.add.image(this.x, this.y, 'fx-rock').setDepth(4);
     }
+    ctx.events.emit('giant-attack', { kind: a.kind, phase: 'active' });
   }
 
   private enterRecovery(now: number, ctx: EnemyContext): void {
@@ -194,6 +192,7 @@ export class Giant extends Enemy {
     a.phase = 'recovery';
     a.phaseStartedAt = now;
     a.phaseEndsAt = now + GIANT[a.kind].recoveryMs;
+    ctx.events.emit('giant-attack', { kind: a.kind, phase: 'recovery' });
   }
 
   /** Hits once, if the player is inside the ring while the slam is active. */
@@ -234,7 +233,7 @@ export class Giant extends Enemy {
     this.rock?.destroy();
     this.rock = null;
     ctx.shake(IMPACT.shake.rockLand.intensity, IMPACT.shake.rockLand.ms);
-    ctx.sound('sfx-crash');
+    ctx.events.emit('giant-rock-landed', { x: a.target.x, y: a.target.y });
     if (Phaser.Math.Distance.BetweenPoints(a.target, ctx.player) <= GIANT.debris.impactRadius) {
       if (ctx.hurtPlayer(GIANT.debris.damage)) ctx.hitStop(IMPACT.hitStop.giantAttack);
     }

@@ -6,6 +6,8 @@ import type { Point } from '../waves/WaveDirector';
  * it is, what it costs, whether it is still for sale, and what buying it does.
  */
 export interface Purchasable {
+  /** What buying it is, for feedback: boarding a parked mech is free and not a purchase. */
+  readonly kind: 'gate' | 'weapon' | 'mech' | 'board';
   /** Where the player must stand within `reach` of. */
   readonly position: Point;
   readonly reach: number;

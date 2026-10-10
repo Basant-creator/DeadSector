@@ -168,6 +168,7 @@ export class Hud {
 
     // Wave, top centre.
     panel(GAME_WIDTH / 2 - 120, PAD, 240, 54, ACCENT.wave, 'top');
+    icon(GAME_WIDTH / 2 - 108, PAD + 19, 'hud-wave');
     this.waveText = text(GAME_WIDTH / 2, PAD + 6, 22).setOrigin(0.5, 0);
     this.waveStatusText = text(GAME_WIDTH / 2, PAD + 33, 12, UI_COLORS.label).setOrigin(0.5, 0);
 
@@ -183,6 +184,7 @@ export class Hud {
     this.weaponIcon = icon(PAD + 14, wy + 20, weaponIconKey('pistol'));
     this.weaponText = text(PAD + 76, wy + 30, 18).setOrigin(0, 1);
     // No weapon uses ammunition yet; the readout is ready for when one does.
+    icon(PAD + 246, wy + 21, 'hud-ammo');
     text(PAD + 262, wy + 28, 11, UI_COLORS.label).setOrigin(0, 1).setText('AMMO');
     text(PAD + 300, wy + 31, 18).setOrigin(0, 1).setText('\u221e');
     this.heldBacking = fixed(scene.add.rectangle(0, 0, 10, 20, SLOT_STYLE.held.backing).setOrigin(0, 1));

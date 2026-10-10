@@ -50,6 +50,12 @@ export interface WaveDirectorOptions {
    * waits for any Giant to die.
    */
   onWaveCleared: (waveNumber: number, last: boolean) => void;
+  /** Called once per wave as its intermission ends and it starts to spawn. */
+  onWaveStarted?: (waveNumber: number) => void;
+  /** Called when a Giant is announced, with the time until it arrives. */
+  onGiantAnnounced?: (arrivesInMs: number) => void;
+  /** Called when the announced Giant arrives. */
+  onGiantArrived?: (giant: Giant) => void;
 }
 
 /**
@@ -140,6 +146,7 @@ export class WaveDirector {
     if (this.currentPhase === 'intermission' && now >= this.intermissionEndsAt) {
       this.currentPhase = 'active';
       this.nextSpawnAt = now;
+      this.options.onWaveStarted?.(this.waveNumber);
       this.rollForGiant(now);
     }
     if (this.currentPhase === 'active') this.trySpawn(now);
@@ -155,7 +162,10 @@ export class WaveDirector {
 
   private rollForGiant(now: number): void {
     if (this.giant || this.giantDueAt !== null) return;
-    if (rollsGiant(this.waveNumber, this.random())) this.giantDueAt = now + GIANT.encounter.warningMs;
+    if (rollsGiant(this.waveNumber, this.random())) {
+      this.giantDueAt = now + GIANT.encounter.warningMs;
+      this.options.onGiantAnnounced?.(GIANT.encounter.warningMs);
+    }
   }
 
   private trySpawnGiant(): void {
@@ -167,6 +177,7 @@ export class WaveDirector {
     this.options.enemies.add(giant);
     this.giant = giant;
     this.giantDueAt = null;
+    this.options.onGiantArrived?.(giant);
   }
 
   private onGiantDied(giant: Giant): void {

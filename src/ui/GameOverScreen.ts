@@ -66,7 +66,10 @@ export class GameOverScreen {
   }
 
   showSettings(settings: Settings): void {
-    const volume = settings.muted ? 'muted' : `${Math.round(settings.volume * 100)}%`;
-    this.footerText.setText(`[R] restart\n[K] shake: ${settings.shake}   [-/+] volume: ${volume}   [M] mute`);
+    const pct = (v: number) => (settings.muted ? 'muted' : `${Math.round(v * 100)}%`);
+    this.footerText.setText(
+      `[R] restart   [K] shake: ${settings.shake}   [M] mute\n` +
+      `[-/+] volume ${pct(settings.volume)}  [[/]] music ${pct(settings.music)}  [,/.] effects ${pct(settings.sfx)}`,
+    );
   }
 }

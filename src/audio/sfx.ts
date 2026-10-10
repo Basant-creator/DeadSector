@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 
 /**
  * Original sound effects, synthesised at boot into Web Audio buffers: shaped noise for cracks,
- * thuds and rumbles, pitch-swept tones for bodies and voices. No audio files are loaded. Each
- * effect is a recipe of layers; `createSfx` renders them once and registers them as audio
- * assets, so the game plays them like any loaded sound.
+ * thuds and rumbles, pitch-swept tones for bodies and voices. Each effect is a recipe of layers;
+ * `createSfx` renders them once and registers them as audio assets, so the game plays them like
+ * any loaded sound. A file with the same key in src/assets/audio/sfx replaces its recipe.
  */
 type Wave = 'sine' | 'square' | 'saw';
 
@@ -146,6 +146,64 @@ export const SFX: Readonly<Record<string, Recipe>> = {
     { kind: 'saw', from: 240, to: 50, decay: 0.4, gain: 0.4, lowpass: 0.1 },
     { kind: 'noise', decay: 0.3, gain: 0.2, lowpass: 0.05 },
   ] },
+  // Interactions: buying, being refused, a shutter rolling up, a weapon changing hands, a pickup.
+  'sfx-buy': { seconds: 0.5, drive: 1.3, layers: [
+    { kind: 'square', from: 880, to: 880, decay: 0.06, gain: 0.18, lowpass: 0.3 },
+    { kind: 'square', from: 1320, to: 1320, decay: 0.12, attack: 0.07, gain: 0.18, lowpass: 0.3 },
+    { kind: 'noise', decay: 0.02, gain: 0.25, highpass: 0.5 },
+  ] },
+  'sfx-deny': { seconds: 0.3, drive: 1.6, layers: [
+    { kind: 'square', from: 150, to: 140, decay: 0.12, gain: 0.3, lowpass: 0.2 },
+    { kind: 'square', from: 155, to: 145, decay: 0.12, gain: 0.2, lowpass: 0.2 },
+  ] },
+  'sfx-gate': { seconds: 0.9, drive: 1.4, layers: [
+    { kind: 'noise', decay: 0.3, attack: 0.05, gain: 0.5, lowpass: 0.15, tremolo: [0.6, 22] },
+    { kind: 'sine', from: 90, to: 70, decay: 0.2, gain: 0.4 },
+  ] },
+  'sfx-switch': { seconds: 0.15, drive: 1.2, layers: [
+    { kind: 'noise', decay: 0.006, gain: 0.5, highpass: 0.6 },
+    { kind: 'sine', from: 2200, to: 1800, decay: 0.012, gain: 0.15 },
+  ] },
+  'sfx-pickup': { seconds: 0.4, drive: 1.2, layers: [
+    { kind: 'sine', from: 660, to: 1320, decay: 0.12, gain: 0.35 },
+    { kind: 'square', from: 990, to: 1980, decay: 0.08, gain: 0.08, lowpass: 0.3 },
+  ] },
+  // The run's beats: a wave begins, the sector is cleared, the player falls.
+  'sfx-wave': { seconds: 1.2, drive: 2, layers: [
+    { kind: 'sine', from: 70, to: 40, decay: 0.4, gain: 0.9 },
+    { kind: 'saw', from: 110, to: 104, decay: 0.35, attack: 0.02, gain: 0.25, lowpass: 0.05 },
+    { kind: 'noise', decay: 0.15, gain: 0.3, lowpass: 0.08 },
+  ] },
+  'sfx-victory': { seconds: 1.6, drive: 1.3, layers: [
+    { kind: 'saw', from: 220, to: 220, decay: 0.6, attack: 0.05, gain: 0.2, lowpass: 0.08 },
+    { kind: 'saw', from: 330, to: 330, decay: 0.6, attack: 0.15, gain: 0.18, lowpass: 0.08 },
+    { kind: 'saw', from: 440, to: 440, decay: 0.7, attack: 0.3, gain: 0.16, lowpass: 0.08 },
+  ] },
+  'sfx-player-death': { seconds: 1.4, drive: 1.8, layers: [
+    { kind: 'square', from: 260, to: 70, decay: 0.45, attack: 0.01, gain: 0.3, lowpass: 0.15 },
+    { kind: 'sine', from: 90, to: 30, decay: 0.5, gain: 0.7 },
+    { kind: 'noise', decay: 0.2, gain: 0.3, lowpass: 0.06 },
+  ] },
+  // The Giant: a siren while it is on its way, a roar and a ground blow when it arrives, and a
+  // rumble while a slam winds up.
+  'sfx-warning': { seconds: 2.2, drive: 1.5, layers: [
+    { kind: 'square', from: 440, to: 440, decay: 3, attack: 0.05, gain: 0.16, lowpass: 0.12, vibrato: [0.2, 2.5] },
+    { kind: 'saw', from: 110, to: 110, decay: 3, attack: 0.1, gain: 0.18, lowpass: 0.06, tremolo: [0.5, 2.5] },
+  ] },
+  'sfx-giant-arrive': { seconds: 1.6, drive: 2.4, layers: [
+    { kind: 'saw', from: 70, to: 48, decay: 0.6, attack: 0.08, gain: 0.6, lowpass: 0.07, vibrato: [0.1, 13] },
+    { kind: 'sine', from: 60, to: 24, decay: 0.5, gain: 1 },
+    { kind: 'noise', decay: 0.4, gain: 0.5, lowpass: 0.05 },
+  ] },
+  'sfx-rumble': { seconds: 1, drive: 1.8, layers: [
+    { kind: 'noise', decay: 0.5, attack: 0.5, gain: 0.8, lowpass: 0.03 },
+    { kind: 'sine', from: 40, to: 52, decay: 0.6, attack: 0.5, gain: 0.5 },
+  ] },
+  // Future: the power going out.
+  'sfx-blackout': { seconds: 1.2, drive: 1.6, layers: [
+    { kind: 'saw', from: 180, to: 30, decay: 0.4, gain: 0.35, lowpass: 0.1 },
+    { kind: 'noise', decay: 0.02, gain: 0.5, highpass: 0.4 },
+  ] },
   'sfx-explosion': { seconds: 1.4, drive: 2.6, layers: [
     { kind: 'noise', decay: 0.45, gain: 1, lowpass: 0.07 },
     { kind: 'sine', from: 80, to: 24, decay: 0.5, gain: 1 },
@@ -161,6 +219,8 @@ export function createSfx(scene: Phaser.Scene): void {
   const ctx = manager.context;
   const rand = mulberry(9);
   for (const [key, recipe] of Object.entries(SFX)) {
+    // A file with this key was loaded (src/audio/assets.ts): it replaces the recipe.
+    if (scene.cache.audio.exists(key)) continue;
     const length = Math.ceil(recipe.seconds * ctx.sampleRate);
     const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
     if (recipe.loop) {
@@ -222,57 +282,4 @@ function mulberry(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-/** Shortest gap between two plays of the same effect, so a crowd never becomes a wall of noise. */
-const MIN_GAP_MS: Readonly<Record<string, number>> = {
-  'sfx-hit': 35, 'sfx-impact': 45, 'sfx-death': 40, 'sfx-crash': 80, 'sfx-ping': 60, 'sfx-alarm': 1500, 'sfx-clank': 60,
-};
-/** Above this many sounds at once, only weapons and the player's (or the mech's) own hurt still play. */
-const MAX_VOICES = 20;
-const ALWAYS = new Set(['sfx-pistol', 'sfx-shotgun', 'sfx-rifle', 'sfx-hurt', 'sfx-slam', 'sfx-cannon', 'sfx-clank', 'sfx-stomp']);
-
-/** Plays the synthesised effects with per-sound rate limits and a voice cap. */
-export class Sfx {
-  private readonly scene: Phaser.Scene;
-  private readonly lastPlayed = new Map<string, number>();
-  // Kept here rather than read back from Phaser: before the first click unlocks audio, the
-  // manager's volume and mute getters still report the old values.
-  private currentVolume = 1;
-  private isMuted = false;
-
-  constructor(scene: Phaser.Scene) {
-    this.scene = scene;
-  }
-
-  get volume(): number {
-    return this.currentVolume;
-  }
-
-  get muted(): boolean {
-    return this.isMuted;
-  }
-
-  /** Master volume (0-1) and mute, applied to the whole game. */
-  configure(volume: number, muted: boolean): void {
-    this.currentVolume = volume;
-    this.isMuted = muted;
-    this.scene.sound.volume = volume;
-    this.scene.sound.mute = muted;
-  }
-
-  play(key: string, options: { volume?: number; detune?: number; rate?: number } = {}): boolean {
-    const sound = this.scene.sound;
-    if (!this.scene.cache.audio.exists(key) || this.isMuted) return false;
-    const now = performance.now();
-    if (now - (this.lastPlayed.get(key) ?? -Infinity) < (MIN_GAP_MS[key] ?? 0)) return false;
-    if (!ALWAYS.has(key) && sound.getAllPlaying().length >= MAX_VOICES) return false;
-    this.lastPlayed.set(key, now);
-    return sound.play(key, {
-      volume: options.volume ?? 1,
-      // A little variation, so repeats never sound copy-pasted.
-      detune: (options.detune ?? 0) + (Math.random() - 0.5) * 120,
-      rate: options.rate ?? 1,
-    });
-  }
 }

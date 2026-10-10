@@ -3,7 +3,7 @@ import type { LightSprite } from '../art/cityArt';
 import { VENTS } from '../art/cityDetails';
 import { LAYER } from '../art/layers';
 import { PALETTE } from '../art/palette';
-import type { Sfx } from '../audio/sfx';
+import type { AudioManager } from '../audio/AudioManager';
 import { SOLIDS, TILE } from '../world/cityMap';
 
 /** Ambience sits well under the fight: gameplay sounds play at 0.7 to 1. */
@@ -44,23 +44,22 @@ const LITTER_STARTS: readonly (readonly [number, number])[] = [[200, 900], [700,
  * The living city: lights that buzz, breathe or flash, steam from vents, litter in the wind,
  * car alarms set off by stray shots, a wind loop and the odd distant sound. All of it is
  * presentation, quiet and below the fight; none of it blocks a view of an enemy or a bullet.
- * Driven by `update(now)` with no timers or tweens; the wind loop is stopped when the scene shuts
- * down, so a restart never stacks a second one.
+ * Driven by `update(now)` with no timers or tweens; the wind loop belongs to the AudioManager,
+ * which stops it when the scene shuts down, so a restart never stacks a second one.
  */
 export class Ambience {
   private readonly scene: Phaser.Scene;
-  private readonly sfx: Sfx;
+  private readonly audio: AudioManager;
   private readonly lights: readonly LightSprite[];
   private readonly puffs: Puff[] = [];
   private readonly scraps: Scrap[] = [];
   private readonly alarms = new Map<number, Alarm>();
   private readonly rearmAt = new Map<number, number>();
-  private readonly wind: Phaser.Sound.BaseSound | null;
   private nextDistantAt: number;
 
-  constructor(scene: Phaser.Scene, lights: readonly LightSprite[], sfx: Sfx) {
+  constructor(scene: Phaser.Scene, lights: readonly LightSprite[], audio: AudioManager) {
     this.scene = scene;
-    this.sfx = sfx;
+    this.audio = audio;
     this.lights = lights;
     const now = scene.time.now;
 
@@ -76,10 +75,8 @@ export class Ambience {
       this.scraps.push({ image, bornAt: now - i * 4000, x0, y0 });
     }
 
-    this.wind = scene.cache.audio.exists('amb-wind') ? scene.sound.add('amb-wind', { loop: true, volume: WIND_VOLUME }) : null;
-    this.wind?.play();
+    audio.loop('amb-wind', WIND_VOLUME);
     this.nextDistantAt = now + 4000;
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.wind?.destroy());
   }
 
   /** A bullet hit car *index* (into SOLIDS): its alarm goes off, unless it only just stopped. */
@@ -93,7 +90,7 @@ export class Ambience {
       .setBlendMode(Phaser.BlendModes.ADD).setDepth(LAYER.lights).setAlpha(0));
     this.alarms.set(index, { lights, until: now + ALARM_MS });
     this.rearmAt.set(index, now + ALARM_MS + ALARM_REARM_MS);
-    this.sfx.play('sfx-alarm', { volume: 0.35 });
+    this.audio.play('sfx-alarm', { volume: 0.35 });
   }
 
   /** Whether car *index*'s alarm is going, for tests and debugging. */
@@ -139,7 +136,7 @@ export class Ambience {
     if (now >= this.nextDistantAt) {
       const key = DISTANT.keys[Math.floor(Math.random() * DISTANT.keys.length)];
       const [lo, hi] = DISTANT.volume;
-      this.sfx.play(key, { volume: lo + Math.random() * (hi - lo), detune: (Math.random() - 0.5) * 300 });
+      this.audio.play(key, { volume: lo + Math.random() * (hi - lo), detune: (Math.random() - 0.5) * 300 });
       this.nextDistantAt = now + DISTANT.minGapMs + Math.random() * (DISTANT.maxGapMs - DISTANT.minGapMs);
     }
   }

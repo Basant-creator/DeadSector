@@ -1,17 +1,19 @@
 import Phaser from 'phaser';
-import { Sfx } from '../audio/sfx';
+import { AudioManager } from '../audio/AudioManager';
+import { MUSIC } from '../audio/music';
 import { Arsenal } from '../combat/Arsenal';
 import { Bullet } from '../combat/Bullet';
 import { HEAVY_KINDS, IMPACT, WEAPON_FEEL } from '../combat/feel';
 import { type WeaponDef, type WeaponId, WEAPON_IDS, WEAPONS } from '../combat/weapons';
 import { Enemy, type EnemyContext } from '../entities/Enemy';
-import { ENEMIES, type EnemyKind } from '../entities/enemies';
+import { ENEMIES } from '../entities/enemies';
 import { Giant } from '../entities/Giant';
 import { Mech, type MechState } from '../entities/Mech';
 import { muzzleOffset, Player, PLAYER_BODY_RADIUS, PLAYER_MAX_HP } from '../entities/Player';
 import { Ambience } from '../fx/Ambience';
 import { CameraFx } from '../fx/CameraFx';
 import { Fx } from '../fx/Fx';
+import { GameEvents } from '../events/GameEvents';
 import { HitStop } from '../fx/HitStop';
 import { MECH } from '../mech/mechRules';
 import { loadProfile, nextShakeLevel, type Profile, saveProfile } from '../run/Profile';
@@ -29,10 +31,14 @@ import { LOCKER_REACH } from '../world/WeaponLocker';
 const NOTICE_MS = 2200;
 const SLOT_KEYS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
 const VOLUME_STEP = 0.1;
-/** Hits on one enemy within this window share one blood spray and one sound. */
+/** Volume keys, by the character typed: - and + master, [ and ] music, , and . effects. */
+const VOLUME_KEYS: Readonly<Record<string, readonly ['volume' | 'music' | 'sfx', number]>> = {
+  '-': ['volume', -1], '_': ['volume', -1], '=': ['volume', 1], '+': ['volume', 1],
+  '[': ['music', -1], ']': ['music', 1], ',': ['sfx', -1], '.': ['sfx', 1],
+};
+const VOLUME_NAMES = { volume: 'VOLUME', music: 'MUSIC', sfx: 'EFFECTS' } as const;
+/** Hits on one enemy within this window share one blood spray and one 'enemy-hit' event. */
 const HIT_FEEDBACK_MS = 50;
-/** Death sounds pitched by size: small bodies higher, big ones lower, in cents. */
-const DEATH_DETUNE: Readonly<Record<EnemyKind, number>> = { walker: 0, runner: 350, brute: -450, elite: -150, giant: -1000 };
 
 /** The camera's follow: smooth enough that the shot kick eases back by itself. */
 const FOLLOW_LERP = 0.1;
@@ -63,7 +69,10 @@ export class ArenaScene extends Phaser.Scene {
   private enemyContext!: EnemyContext;
   /** Presentation only: told what happened, never asked. */
   private fx!: Fx;
-  private sfx!: Sfx;
+  /** What happened this run, announced once; audio (and future systems) listen. */
+  private bus!: GameEvents;
+  /** Every sound and the music: answers `events`, never called by gameplay. */
+  private audio!: AudioManager;
   private cameraFx!: CameraFx;
   private hitStop!: HitStop;
   private ambience!: Ambience;
@@ -84,8 +93,10 @@ export class ArenaScene extends Phaser.Scene {
     this.hitFeedbackAt = new WeakMap();
     // The physics world outlives the scene: never start a run inside a previous run's hit-stop.
     this.physics.world.resume();
-    this.sfx = new Sfx(this);
-    this.sfx.configure(this.profile.settings.volume, this.profile.settings.muted);
+    this.bus = new GameEvents();
+    // Its listeners go with the run.
+    this.sys.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.bus.destroy());
+    this.audio = new AudioManager(this, this.bus, this.profile.settings);
     this.hitStop = new HitStop(() => this.physics.world.pause(), (ms) => this.afterHitStop(ms));
 
     // World bounds default to the canvas size; widen them to the whole city.
@@ -112,10 +123,14 @@ export class ArenaScene extends Phaser.Scene {
         this.run.recordKill(enemy.coinReward);
         this.killFeedback(enemy);
       },
-      onWaveCleared: (_wave, last) => {
+      onWaveCleared: (wave, last) => {
         this.run.recordWaveCleared();
+        this.bus.emit('wave-cleared', { wave, last });
         if (last) this.endRun('cleared');
       },
+      onWaveStarted: (wave) => this.bus.emit('wave-started', { wave, waveCount: this.director.waveCount }),
+      onGiantAnnounced: (arrivesInMs) => this.bus.emit('giant-warning', { arrivesInMs }),
+      onGiantArrived: () => this.bus.emit('giant-arrived', {}),
     });
     this.purchasables = this.createPurchasables();
 
@@ -135,14 +150,14 @@ export class ArenaScene extends Phaser.Scene {
     this.cameraFx = new CameraFx(camera, this.profile.settings.shake);
 
     this.fx = new Fx(this);
-    this.ambience = new Ambience(this, this.city.lights, this.sfx);
+    this.ambience = new Ambience(this, this.city.lights, this.audio);
     this.hud = new Hud(this);
     this.enemyContext = {
       player: this.player,
       nav: this.city.nav,
       hurtPlayer: (amount) => this.damagePlayer(amount),
       shake: (intensity, durationMs) => this.cameraFx.shake(intensity, durationMs, this.time.now),
-      sound: (key, options) => this.sfx.play(key, options),
+      events: this.bus,
       hitStop: (ms) => this.hitStop.trigger(ms, this.time.now),
     };
     // The scene's keyboard plugin drops these listeners on shutdown, so restarts never stack them.
@@ -157,8 +172,8 @@ export class ArenaScene extends Phaser.Scene {
     this.onKey('keydown-M', () => this.toggleMute());
     // By the character typed, not the key code: Firefox codes - and = differently.
     this.onKey('keydown', (event) => {
-      if (event.key === '-' || event.key === '_') this.changeVolume(-VOLUME_STEP);
-      else if (event.key === '=' || event.key === '+') this.changeVolume(VOLUME_STEP);
+      const step = VOLUME_KEYS[event.key];
+      if (step) this.changeVolume(step[0], step[1] * VOLUME_STEP);
     });
   }
 
@@ -190,7 +205,21 @@ export class ArenaScene extends Phaser.Scene {
 
     this.fx.update(now);
     this.ambience.update(now);
+    this.audio.update(this.musicSignals(now));
     this.hud.update(this.hudState(now));
+  }
+
+  /** What the fight looks like to the music: how threatening the living enemies are, and what is under way. */
+  private musicSignals(now: number) {
+    let threat = 0;
+    for (const enemy of this.enemies.getChildren() as Enemy[]) if (!enemy.isDead) threat += MUSIC.threatWeight[enemy.kind];
+    const director = this.director;
+    return {
+      threat,
+      waveActive: director.phase === 'active',
+      giant: (director.boss !== null && !director.boss.isDead) || director.giantWarningLeftMs(now) > 0,
+      runOver: this.run.isOver,
+    };
   }
 
   /**
@@ -216,7 +245,7 @@ export class ArenaScene extends Phaser.Scene {
   private shotFeedback(weapon: WeaponDef, angle: number, x: number, y: number, now: number): void {
     const feel = WEAPON_FEEL[weapon.id];
     this.fx.muzzle(x, y, angle, weapon.id);
-    this.sfx.play(feel.sound, { volume: weapon.id === 'rifle' ? 0.7 : 1 });
+    this.bus.emit('shot-fired', { gun: weapon.id, x, y, angle });
     this.player.recoil(now, feel.recoilMs);
     this.cameraFx.kick(angle + Math.PI, feel.kickPx);
     if (feel.shake) this.cameraFx.shake(feel.shake.intensity, feel.shake.ms, now);
@@ -231,7 +260,7 @@ export class ArenaScene extends Phaser.Scene {
       if (shot) {
         const feel = WEAPON_FEEL.mech;
         this.fx.muzzle(shot.x, shot.y, shot.angle, 'mech');
-        this.sfx.play(feel.sound, { volume: 0.85 });
+        this.bus.emit('shot-fired', { gun: 'mech', x: shot.x, y: shot.y, angle: shot.angle });
         this.cameraFx.kick(shot.angle + Math.PI, feel.kickPx);
       }
     }
@@ -240,11 +269,11 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   /** The player climbs into the mech: hidden inside it, and the camera follows the mech. */
-  private enterMech(): void {
+  private enterMech(firstTime: boolean): void {
     this.player.enterVehicle();
     this.player.followVehicle(this.mech.x, this.mech.y);
     this.cameras.main.startFollow(this.mech, false, FOLLOW_LERP, FOLLOW_LERP);
-    this.sfx.play('sfx-mech-on');
+    this.bus.emit(firstTime ? 'mech-online' : 'mech-boarded', {});
   }
 
   /**
@@ -270,17 +299,15 @@ export class ArenaScene extends Phaser.Scene {
       if (Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y) > MECH.eject.pushRadius + enemy.radius) continue;
       enemy.knockback(Phaser.Math.Angle.Between(x, y, enemy.x, enemy.y), MECH.eject.push, now);
     }
+    this.bus.emit('mech-ejected', { why });
     if (why === 'destroyed') {
       this.fx.explosion(x, y);
-      this.sfx.play('sfx-explosion');
       this.cameraFx.shake(IMPACT.shake.heavy.intensity, IMPACT.shake.heavy.ms, now);
       if (!this.run.isOver) this.hitStop.trigger(IMPACT.hitStop.giantDeath, now);
       this.showNotice('MECH DESTROYED. You were thrown clear: move!', 'warn');
     } else if (why === 'depleted') {
-      this.sfx.play('sfx-mech-off');
       this.showNotice('MECH OUT OF ENERGY. You are on foot again.', 'warn');
     } else {
-      this.sfx.play('sfx-mech-off', { volume: 0.6 });
       this.showNotice('Out of the mech. Press E beside it to climb back in.', 'info');
     }
   }
@@ -322,7 +349,6 @@ export class ArenaScene extends Phaser.Scene {
     const { x, y } = this.mech;
     const { radius, damage, knockback } = MECH.stomp;
     this.fx.shockwave(x, y, radius);
-    this.sfx.play('sfx-stomp');
     this.cameraFx.shake(IMPACT.shake.rockLand.intensity, IMPACT.shake.rockLand.ms, now);
     let hits = 0;
     // A copy: an enemy dying mid-loop leaves the group.
@@ -333,9 +359,10 @@ export class ArenaScene extends Phaser.Scene {
       enemy.takeDamage(damage);
       enemy.knockback(angle, knockback, now);
       this.fx.blood(enemy.x, enemy.y, angle, enemy.kind === 'giant');
+      this.bus.emit('enemy-hit', { enemy, x: enemy.x, y: enemy.y, angle, source: 'stomp' });
       hits++;
     }
-    if (hits > 0) this.sfx.play('sfx-hit', { volume: 0.9 });
+    this.bus.emit('mech-stomp', { x, y, hits });
     this.syncPilot(now);
   }
 
@@ -352,11 +379,11 @@ export class ArenaScene extends Phaser.Scene {
     }
     if (hit && (hit.kind === 'car' || hit.kind === 'dumpster' || hit.kind === 'gate')) {
       this.fx.impact(bullet.x, bullet.y);
-      this.sfx.play('sfx-ping', { volume: 0.45, detune: hit.kind === 'car' ? 0 : -600 });
+      this.bus.emit('bullet-impact', { x: bullet.x, y: bullet.y, material: 'metal', solid: hit.kind });
       if (hit.kind === 'car') this.ambience.carHit(hit.index, this.time.now);
     } else {
       this.fx.dust(bullet.x, bullet.y);
-      this.sfx.play('sfx-impact', { volume: 0.35 });
+      this.bus.emit('bullet-impact', { x: bullet.x, y: bullet.y, material: 'masonry', solid: hit?.kind ?? null });
     }
   }
 
@@ -365,7 +392,7 @@ export class ArenaScene extends Phaser.Scene {
     const now = this.time.now;
     const giant = enemy.kind === 'giant';
     this.fx.death(enemy.x, enemy.y, enemy.radius);
-    this.sfx.play('sfx-death', { detune: DEATH_DETUNE[enemy.kind] });
+    this.bus.emit('enemy-killed', { enemy, kind: enemy.kind });
     const shake = giant ? IMPACT.shake.heavy : IMPACT.shake.kill;
     this.cameraFx.shake(shake.intensity, shake.ms, now);
     const hold = giant ? IMPACT.hitStop.giantDeath : HEAVY_KINDS.has(enemy.kind) ? IMPACT.hitStop.heavyKill : IMPACT.hitStop.kill;
@@ -394,16 +421,18 @@ export class ArenaScene extends Phaser.Scene {
     this.settingsChanged(settings.muted ? 'SOUND: MUTED' : `SOUND: ON, VOLUME ${Math.round(settings.volume * 100)}%`);
   }
 
-  private changeVolume(delta: number): void {
+  /** Step one of the three volumes; any change unmutes. */
+  private changeVolume(which: 'volume' | 'music' | 'sfx', delta: number): void {
     const settings = this.profile.settings;
-    settings.volume = Math.round(Phaser.Math.Clamp(settings.volume + delta, 0, 1) * 10) / 10;
+    settings[which] = Math.round(Phaser.Math.Clamp(settings[which] + delta, 0, 1) * 10) / 10;
     settings.muted = false;
-    this.settingsChanged(`VOLUME ${Math.round(settings.volume * 100)}%`);
+    // The controls line only has room for -/+; the notice shows the rest.
+    this.settingsChanged(`${VOLUME_NAMES[which]} ${Math.round(settings[which] * 100)}%   -/+ all  [ ] music  , . effects`);
   }
 
   private settingsChanged(notice: string): void {
     const { settings } = this.profile;
-    this.sfx.configure(settings.volume, settings.muted);
+    this.audio.configure(settings);
     saveProfile(this.profile);
     this.gameOver?.showSettings(settings);
     this.showNotice(notice, 'info');
@@ -418,6 +447,7 @@ export class ArenaScene extends Phaser.Scene {
     const facilityGate = this.city.facilityGate;
     const mech = this.mech;
     const gateItem: Purchasable = {
+      kind: 'gate',
       position: gate.centre,
       reach: GATE_REACH,
       cost: GATE_COST,
@@ -426,10 +456,12 @@ export class ArenaScene extends Phaser.Scene {
       isAvailable: () => !gate.isOpen,
       deliver: () => {
         this.city.openGate();
+        this.bus.emit('gate-opened', { gate: 'alley' });
         return `GATE OPEN: -${GATE_COST} coins. The Narrow Alleys are open.`;
       },
     };
     const facilityGateItem: Purchasable = {
+      kind: 'gate',
       position: facilityGate.centre,
       reach: GATE_REACH,
       cost: FACILITY_GATE_COST,
@@ -438,10 +470,12 @@ export class ArenaScene extends Phaser.Scene {
       isAvailable: () => !facilityGate.isOpen,
       deliver: () => {
         this.city.openGate(facilityGate);
+        this.bus.emit('gate-opened', { gate: 'facility' });
         return `GATE OPEN: -${FACILITY_GATE_COST} coins. The Industrial Facility is open.`;
       },
     };
     const mechItem: Purchasable = {
+      kind: 'mech',
       position: mech,
       reach: MECH.reach,
       cost: MECH.cost,
@@ -451,11 +485,12 @@ export class ArenaScene extends Phaser.Scene {
       deliver: () => {
         mech.activate(this.time.now);
         this.city.mechBay.showForSale(false);
-        this.enterMech();
+        this.enterMech(true);
         return `MECH ONLINE: -${MECH.cost} coins. Its energy drains, faster while firing. SPACE stomps.`;
       },
     };
     const boardItem: Purchasable = {
+      kind: 'board',
       position: mech,
       reach: MECH.reach,
       cost: 0,
@@ -466,13 +501,14 @@ export class ArenaScene extends Phaser.Scene {
       isAvailable: () => mech.canBoard,
       deliver: () => {
         mech.board(this.time.now);
-        this.enterMech();
+        this.enterMech(false);
         return 'BACK IN THE MECH.';
       },
     };
     const lockerItems = this.city.lockers.map((locker): Purchasable => {
       const def = WEAPONS[locker.weapon];
       return {
+        kind: 'weapon',
         position: locker.standAt,
         reach: LOCKER_REACH,
         cost: def.cost,
@@ -529,9 +565,11 @@ export class ArenaScene extends Phaser.Scene {
     const item = this.purchasableInReach();
     if (!item) return;
     if (!this.run.spend(item.cost)) {
+      this.bus.emit('purchase-refused', { cost: item.cost, balance: this.run.coinBalance });
       this.showNotice(`NOT ENOUGH COINS: ${item.noun} costs ${item.cost}, you have ${this.run.coinBalance}`, 'warn');
       return;
     }
+    if (item.kind !== 'board') this.bus.emit('purchase', { item: item.kind, cost: item.cost });
     this.showNotice(item.deliver(), 'info');
   }
 
@@ -549,6 +587,7 @@ export class ArenaScene extends Phaser.Scene {
   private switchWeapon(change: () => boolean): void {
     if (this.run.isOver || this.player.isInVehicle || !change()) return;
     this.player.holdWeapon(this.arsenal.current.def);
+    this.bus.emit('weapon-switched', { gun: this.arsenal.current.def.id });
   }
 
   private showNotice(text: string, tone: NoticeTone): void {
@@ -623,7 +662,7 @@ export class ArenaScene extends Phaser.Scene {
     this.hitFeedbackAt.set(enemy, now);
     const giant = enemy.kind === 'giant';
     this.fx.blood(bullet.x, bullet.y, bullet.rotation, giant);
-    this.sfx.play('sfx-hit', { detune: giant ? -800 : 0, volume: giant ? 1 : 0.75 });
+    this.bus.emit('enemy-hit', { enemy, x: bullet.x, y: bullet.y, angle: bullet.rotation, source: bullet.weapon ?? 'pistol' });
     if (bullet.weapon === 'pistol' || giant) this.cameraFx.shake(IMPACT.shake.hit.intensity, IMPACT.shake.hit.ms, now);
   }
 
@@ -645,7 +684,7 @@ export class ArenaScene extends Phaser.Scene {
     const shake = heavy ? IMPACT.shake.heavy : IMPACT.shake.playerHurt;
     this.cameraFx.shake(shake.intensity, shake.ms, now);
     this.fx.impact(this.mech.x, this.mech.y);
-    this.sfx.play('sfx-clank', { volume: heavy ? 1 : 0.8 });
+    this.bus.emit('mech-hit', { amount, heavy, health: this.mech.health });
     if (!this.mech.isPiloted) {
       this.syncPilot(now);
       return true;
@@ -674,8 +713,9 @@ export class ArenaScene extends Phaser.Scene {
     const shake = heavy ? IMPACT.shake.heavy : IMPACT.shake.playerHurt;
     this.cameraFx.shake(shake.intensity, shake.ms, now);
     this.fx.playerHurt();
-    this.sfx.play('sfx-hurt');
+    this.bus.emit('player-hurt', { amount, heavy, health: this.player.health });
     if (this.player.isDead) {
+      this.bus.emit('player-died', {});
       this.endRun('died');
       return true;
     }
@@ -691,6 +731,7 @@ export class ArenaScene extends Phaser.Scene {
     this.hitStop.release(now);
     this.run.end(outcome, now);
     this.director.stop();
+    this.bus.emit('run-ended', { outcome });
     // A cleared run leaves the player standing; stop it where it is.
     this.player.setVelocity(0, 0).setAlpha(1);
     this.mech.halt();

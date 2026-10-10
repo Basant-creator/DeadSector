@@ -275,6 +275,29 @@ function hudIcons(scene: Phaser.Scene): void {
   coin.px(3, 2, 0xffe08a);
   coin.outline(PALETTE.outline);
   addImage(scene, 'hud-coin', coin, S);
+
+  // Waves: a cyan skull, the wave panel's accent.
+  const skull = new PixelArt(9, 9);
+  skull.disc(4.5, 3.8, 3.8, PALETTE.cyan);
+  skull.rect(2, 6, 5, 2, PALETTE.cyan);
+  skull.rect(2, 3, 2, 2, PALETTE.outline);
+  skull.rect(5, 3, 2, 2, PALETTE.outline);
+  skull.px(4, 5, PALETTE.outline);
+  skull.px(3, 7, PALETTE.outline);
+  skull.px(5, 7, PALETTE.outline);
+  skull.px(3, 1, 0xa8f4fa);
+  skull.outline(PALETTE.outline);
+  addImage(scene, 'hud-wave', skull, S);
+
+  // Ammunition: a brass cartridge, upright.
+  const round = new PixelArt(5, 10);
+  round.rect(1, 3, 3, 6, 0xc88a20);
+  round.rect(1, 3, 1, 6, 0xf0c060);
+  round.rect(1, 0, 3, 3, 0x9a9ea6);
+  round.px(2, 0, 0xd8dce2);
+  round.rect(0, 9, 5, 1, 0x8a6018);
+  round.outline(PALETTE.outline);
+  addImage(scene, 'hud-ammo', round, S);
 }
 
 /** A smooth radial gradient (not pixel art: lights and vignettes stay soft). */

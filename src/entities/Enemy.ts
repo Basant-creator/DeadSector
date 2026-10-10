@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { enemyTextureKey, enemyWalkAnim } from '../art/characters';
 import { ENEMY_WEIGHT, IMPACT } from '../combat/feel';
+import type { GameEvents } from '../events/GameEvents';
 import type { NavGrid } from '../world/NavGrid';
 import { ENEMIES, type EnemyDef, type EnemyKind } from './enemies';
 
@@ -15,8 +16,8 @@ export interface EnemyContext {
   hurtPlayer(amount: number): boolean;
   /** Camera shake for heavy impacts, scaled by the player's shake setting. */
   shake(intensity: number, durationMs: number): void;
-  /** Play a sound effect (src/audio/sfx.ts). */
-  sound(key: string, options?: { volume?: number; detune?: number }): void;
+  /** The run's event bus: announce what happened; presentation (sound) answers. */
+  events: GameEvents;
   /** Hold the fight still for *ms* (hit-stop), for impacts that should land hard. */
   hitStop(ms: number): void;
 }
