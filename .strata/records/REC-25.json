@@ -1,0 +1,114 @@
+{
+  "id": "REC-25",
+  "schemaVersion": "0.1.0",
+  "title": "Industrial Facility: south of the Residential Block behind a 300-coin gate",
+  "intent": "Add a third district that holds the mech, reachable without buying the alley gate",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/world/cityMap.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/City.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/Gate.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityArt.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityDetails.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/props.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "9e9762d",
+      "description": "facility, second gate, containers and tanks",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "city.test.mjs",
+      "description": "bounds 2880x2720, no pinches, facility unreachable until its gate opens",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "enemies.test.mjs",
+      "description": "a Brute from every spawn point, facility included, reaches the player (slowest 76 s)",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "giant.test.mjs",
+      "description": "a Giant from every spawn point reaches the player (slowest 82 s)",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "The facility (rows 60-83) is entered only through FACILITY_GATE_RECT at the foot of the avenue south of the spawn; its four spawn points stay idle until that gate is open",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "It hangs off the Residential Block, not the Alleys, so the mech path costs 500 (gate 300 + mech 200) rather than 560; a run earns 632 coins without a Giant",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The map grew to 90 x 85 tiles (2880 x 2720); world and camera bounds, the nav grid, the decal layer and the art all derive from MAP_COLS and MAP_ROWS",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Facility solids keep the city rules - touch or stand two tiles apart, every solid at least a tile thick, drawn exactly inside its rectangle",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "FACILITY_GATE_RECT",
+    "INDUSTRIAL",
+    "MECH_BAY",
+    "FACILITY_GATE_COST"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "city 49/49, enemies 20/20, giant 33/33, atmosphere 23/23"
+  },
+  "createdAt": 1791629557039,
+  "updatedAt": 1791629557039
+}

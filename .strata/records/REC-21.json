@@ -1,0 +1,75 @@
+{
+  "id": "REC-21",
+  "schemaVersion": "0.1.0",
+  "title": "Sound is synthesised at boot and played through a rate-limited player",
+  "intent": "Original audio with no files, that never turns a crowd into a wall of noise",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/audio/sfx.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/run/Profile.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "b0af3c1",
+      "description": "sfx recipes, Sfx player, Profile v2",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "a0ca6f1",
+      "description": "ambience sounds",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Every effect is a recipe rendered once into a Web Audio buffer by createSfx; no audio files are loaded",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Sfx.play enforces per-sound minimum gaps and a 20-voice cap; only weapons, the player's own hurt and the Giant's slam bypass the cap",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Settings (shake, volume, mute) live in Profile version 2, which migrates the old boolean screenShake",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Sfx",
+    "SFX",
+    "createSfx"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "feel 48/48, runs 37/37"
+  },
+  "createdAt": 1791627812123,
+  "updatedAt": 1791627812123
+}

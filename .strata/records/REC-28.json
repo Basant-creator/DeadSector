@@ -1,0 +1,77 @@
+{
+  "id": "REC-28",
+  "schemaVersion": "0.1.0",
+  "title": "Mech combat numbers: strong, but on a clock",
+  "intent": "Make the mech improve survival without guaranteeing victory",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/mech/mechRules.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Mech.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/combat/feel.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "9e9762d",
+      "description": "mechRules",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "mech.test.mjs",
+      "description": "measured 140 px/s, 12 rounds in 2 s, drain 9.7 firing vs 2.5 idle over 2 s, stomp 50 and 15 energy",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Energy is the limit - 100 points, 1.25 a second plus 0.6 a round, 15 a stomp - about 80 s standing or 21 s of continuous fire; all of it lives in MECH",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Hull 300 with a 400 ms hit window; 140 px/s; cannon 6 rounds/s of 20; stomp 50 within 150 px on a 5 s cooldown, line of sight required",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The mech fires from the shared bullet pool through Weapon (GunDef 'mech') and never makes per-shot shake",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "MECH"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "mech 66/66"
+  },
+  "createdAt": 1791629558741,
+  "updatedAt": 1791629558741
+}

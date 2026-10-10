@@ -1,0 +1,94 @@
+{
+  "id": "REC-19",
+  "schemaVersion": "0.1.0",
+  "title": "Hit-stop pauses the fight, never time-limited timers",
+  "intent": "Make kills and big hits land with a beat of stillness without anything losing time or getting stuck",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/fx/HitStop.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/combat/feel.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/combat/Bullet.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Enemy.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Giant.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Player.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "b0af3c1",
+      "description": "HitStop with shiftTimers",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "feel.test.mjs",
+      "description": "held share, no stuck pause across runs",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "A hit-stop pauses only the physics world, enemy acts, the player and firing; input, HUD and effects keep running",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "On resume every timer that must not lose time is shifted by the held ms through shiftTimers (bullet life, Giant phases, invulnerability, knockback)",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "No new hit-stop within 160 ms of the last; endRun releases it at once; create() resumes the physics world, which outlives scene restarts",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "HitStop",
+    "IMPACT"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "feel 48/48"
+  },
+  "createdAt": 1791627810955,
+  "updatedAt": 1791627810955
+}

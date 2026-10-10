@@ -1,0 +1,67 @@
+{
+  "id": "REC-29",
+  "schemaVersion": "0.1.0",
+  "title": "Giant telegraphs stay escapable on foot and in the mech (supersedes REC-14 constraint 1)",
+  "intent": "Keep every Giant attack fair at the current speeds",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/giantRules.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/mech/mechRules.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "9e9762d",
+      "description": "dodge notes in giantRules and mechRules",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "mech.test.mjs",
+      "description": "the mech walks out of the slam, the charge lane and the debris circle",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "giant.test.mjs",
+      "description": "each attack avoided on foot",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Each wind-up shows its zone and lasts long enough to leave it at 230 px/s on foot (slam 0.46 s of 0.9, charge 0.20 of 0.8, debris 0.33 of 0.9) and at 140 px/s in the mech (0.73, 0.42, 0.58)",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "GIANT"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "giant 33/33, mech 66/66"
+  },
+  "createdAt": 1791629559319,
+  "updatedAt": 1791629559319
+}

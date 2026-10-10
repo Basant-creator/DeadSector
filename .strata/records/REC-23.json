@@ -1,0 +1,96 @@
+{
+  "id": "REC-23",
+  "schemaVersion": "0.1.0",
+  "title": "Bullets start inside the shooter, on paths through the muzzle",
+  "intent": "Let point-blank shots hit an enemy pressed against the player without changing any gun's spread or reach",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/combat/Weapon.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/combat/Arsenal.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Mech.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "spawn bullets at the muzzle",
+      "status": "failed",
+      "failureReason": "an enemy between the player and the barrel was skipped; every weapon did 0 damage at 0-8 px, the rifle also at 20 px",
+      "confidence": "DECLARED",
+      "evidence": []
+    },
+    {
+      "approach": "spawn every pellet at the centre along its own angle",
+      "status": "failed",
+      "failureReason": "the shotgun fan then opened 26 px further back, so at 90 px an outer pellet missed an Elite (40 damage instead of 48)",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "1d267ec",
+      "description": "lead-based bullet origin",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "arsenal.test.mjs",
+      "description": "point blank at 0, 10 and 20 px - pistol 10, shotgun 48, rifle 9",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "feel.test.mjs",
+      "description": "shotgun lands all 6 pellets (48) on an Elite at 90 px",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Fire with (x, y) at the shooter's centre and lead = distance to the muzzle; Weapon.tryFire starts each bullet lead px back along its own path from the muzzle and adds lead to its lifetime",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Every bullet path passes through the muzzle, so a fan (the shotgun) opens at the barrel and reach past the muzzle stays the gun's range",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Weapon.tryFire"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "arsenal 41/41, feel 48/48"
+  },
+  "createdAt": 1791629555903,
+  "updatedAt": 1791629555903
+}

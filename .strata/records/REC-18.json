@@ -1,0 +1,65 @@
+{
+  "id": "REC-18",
+  "schemaVersion": "0.1.0",
+  "title": "Aim projects the pointer through the camera's view, not its matrix (supersedes REC-2 constraint 1)",
+  "intent": "Keep the aim steady while the screen shakes",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/Player.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "cameras.main.getWorldPoint",
+      "status": "failed",
+      "failureReason": "it goes through the render matrix, so camera shake jittered the aim",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "b0af3c1",
+      "description": "aim via worldView",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "feel.test.mjs",
+      "description": "aim angle unchanged under shake and kick",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Project the pointer through cameras.main.worldView every frame, never getWorldPoint or pointer.worldX/Y; shake offsets the render matrix and must not move the aim",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Player"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "feel 48/48"
+  },
+  "createdAt": 1791627810363,
+  "updatedAt": 1791627810363
+}

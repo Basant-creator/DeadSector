@@ -1,0 +1,83 @@
+{
+  "id": "REC-26",
+  "schemaVersion": "0.1.0",
+  "title": "Mech lifecycle: brought online once, boarded freely, spent for good",
+  "intent": "Make the mech a single, run-scoped purchase that can never be bought, activated or rewarded twice",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/entities/Mech.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/mech/mechRules.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/MechBay.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "9e9762d",
+      "description": "Mech, MechBay, mech purchases",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "mech.test.mjs",
+      "description": "double tap charges 200 once, held E stays aboard, spent mech offers nothing, restart resets, no listener or body growth",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "States are dormant, piloted, parked, depleted, destroyed; only dormant can be activated (200 coins, once per run) and only parked boarded (free); depleted and destroyed are final for the run",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Activation and boarding go through the scene's one purchase path; interact ignores key repeats and climbOut refuses within 400 ms of boarding, so a held or double-tapped E never boards and climbs out",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The mech is built in create() like every per-run object; a restart gives a dormant mech, closed gates and one visible player",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Mech",
+    "MechState",
+    "MECH"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "mech 66/66"
+  },
+  "createdAt": 1791629557604,
+  "updatedAt": 1791629557604
+}

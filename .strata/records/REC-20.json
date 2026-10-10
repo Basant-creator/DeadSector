@@ -1,0 +1,65 @@
+{
+  "id": "REC-20",
+  "schemaVersion": "0.1.0",
+  "title": "Each key handler acts on a DOM key event once",
+  "intent": "Stop toggles flipping back and weapon keys firing twice when several keys arrive in one frame",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "plain input.keyboard.on handlers",
+      "status": "failed",
+      "failureReason": "Phaser re-runs a step's whole key queue on every new key event, so with three or more events in one frame an earlier keydown was emitted again (5 emissions for 2 presses)",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "b0af3c1",
+      "description": "onKey guard",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "feel.test.mjs",
+      "description": "burst of key events toggles each setting once",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Register keys through ArenaScene.onKey, which remembers handled KeyboardEvents in a WeakSet",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "onKey"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "feel 48/48"
+  },
+  "createdAt": 1791627811544,
+  "updatedAt": 1791627811544
+}

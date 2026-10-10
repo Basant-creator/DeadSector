@@ -1,0 +1,72 @@
+{
+  "id": "REC-22",
+  "schemaVersion": "0.1.0",
+  "title": "Ambience is presentation only and leaves nothing behind",
+  "intent": "Make the city feel alive without hiding enemies or leaking across runs",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/fx/Ambience.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityArt.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityDetails.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "a0ca6f1",
+      "description": "Ambience",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "atmosphere.test.mjs",
+      "description": "depth, alpha and leak checks",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Ambience is driven by update(now) with no timers or tweens; its wind loop is destroyed on scene shutdown so restarts never stack it",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Steam and litter draw below enemies (depth under 1); light pools stay at alpha 0.35 or less, steam 0.32 or less",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "Ambience",
+    "lightLevel"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "atmosphere 23/23"
+  },
+  "createdAt": 1791627812722,
+  "updatedAt": 1791627812722
+}

@@ -1,0 +1,82 @@
+{
+  "id": "REC-24",
+  "schemaVersion": "0.1.0",
+  "title": "Warnings carry and screen edges stay readable",
+  "intent": "Keep the Giant's throw audible and enemies at the screen edge or under HUD panels visible",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/audio/sfx.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/props.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/ui/Hud.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "1d267ec",
+      "description": "whoosh -32 to -16 dB, death volume 0.8 to 1, vignette 0.75 to 0.45, panels 0.74 to 0.5",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "audit.mjs",
+      "description": "edge contrast 23 to 32, under the coin panel 10 to 20",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "A sound that warns (sfx-whoosh) stays well above the ambience; it measured -16 dB loudest 100 ms against ambience at -28 to -42",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Death sounds play at full volume, never quieter than a hit",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Vignette reaches at most 0.45 alpha and starts past 55 percent of the screen height; HUD panels are at most 0.5 alpha",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "SFX",
+    "Hud"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "atmosphere 23/23, feel 48/48"
+  },
+  "createdAt": 1791629556467,
+  "updatedAt": 1791629556467
+}

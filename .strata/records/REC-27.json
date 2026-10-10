@@ -1,0 +1,94 @@
+{
+  "id": "REC-27",
+  "schemaVersion": "0.1.0",
+  "title": "Inside the mech the hull takes every hit and the pilot rides along",
+  "intent": "Give the mech separate health without a second player object or new targeting logic",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Player.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/entities/Mech.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [
+    {
+      "approach": "eject the pilot at the mech's centre",
+      "status": "failed",
+      "failureReason": "the wreck drew over them at the same depth, so after an explosion the player could not see themselves",
+      "confidence": "DECLARED",
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "9e9762d",
+      "description": "mech damage routing and ejection",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "mech.test.mjs",
+      "description": "Giant slam 35, debris 25, charge 40 on the hull with the pilot at 100; wrecked by a slam, pilot thrown clear at full health",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Exactly one Player per run; piloting hides it, disables its body and carries it at the mech's position, so enemies, the flow field, spawns and the Giant all target the mech unchanged",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Every hit still goes through ArenaScene.damagePlayer, which routes to damageMech while piloting; the Giant's slam, charge and debris therefore land on the hull",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The pilot leaves only through syncPilot and ejectPilot - beside the hatch on open ground away from the danger, health as it was, untouchable 1.5 s, nearby enemies shoved",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "A powered-down mech draws under the player (depth 2.8) and has no body; only a piloted mech collides",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "damageMech",
+    "ejectPilot",
+    "hatchSpot",
+    "syncPilot"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "mech 66/66"
+  },
+  "createdAt": 1791629558170,
+  "updatedAt": 1791629558170
+}

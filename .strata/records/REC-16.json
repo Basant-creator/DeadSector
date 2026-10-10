@@ -1,0 +1,108 @@
+{
+  "id": "REC-16",
+  "schemaVersion": "0.1.0",
+  "title": "Art is generated in code from the map data; what looks solid is solid",
+  "intent": "Give the game an original pixel-art look with no image files, without letting the picture disagree with collision",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Claude Code",
+    "model": "claude-opus-5-5"
+  },
+  "files": [
+    {
+      "path": "src/art/pixels.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/characters.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/props.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityArt.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityDetails.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/layers.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/BootScene.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "b0af3c1",
+      "description": "pixel art, layered city, HUD restyle",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "git_commit",
+      "reference": "a0ca6f1",
+      "description": "storefronts, landmarks, damaged ground",
+      "confidence": "DECLARED"
+    },
+    {
+      "type": "test_run",
+      "reference": "atmosphere.test.mjs",
+      "description": "pixel scan finds 0 stray obstacle pixels and 0 holes inside solids",
+      "confidence": "DECLARED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Every texture is drawn in code once at boot (BootScene) with nearest-neighbour filtering; restarts reuse them",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "The city layers are drawn from cityMap SOLIDS; every obstacle pixel lies inside a collision rectangle and every rectangle is fully drawn, so nothing walkable looks solid and nothing solid looks walkable",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Ground detail is flat (no outlines or height); foreground art covers under 0.3 percent of walkable ground",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Gameplay depths stay fixed (enemies 1, bullets 2, player 3, thrown rock 4); art layers fit around them per src/art/layers.ts",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [
+    "PixelArt",
+    "createCityArt",
+    "renderCity",
+    "drawSolid"
+  ],
+  "status": "ACTIVE",
+  "result": {
+    "status": "success",
+    "summary": "atmosphere 23/23, city 47/47"
+  },
+  "createdAt": 1791627809143,
+  "updatedAt": 1791627809143
+}
