@@ -17,11 +17,17 @@ export class Weapon {
   /**
    * Fire from (x, y) along *angle* if the fire rate allows. Returns whether a shot left the
    * barrel. Called every frame the trigger is held; the cooldown, not the caller, sets the pace.
+   * *lead* is how far (x, y) sits behind the muzzle along *angle*. Each bullet starts that far
+   * back along its own path, so every path still runs through the muzzle (a shotgun's fan opens
+   * at the barrel, not at the player's centre), and flies that much further, so its reach past
+   * the muzzle is still `range`.
    */
-  tryFire(now: number, pool: Phaser.Physics.Arcade.Group, x: number, y: number, angle: number): boolean {
+  tryFire(now: number, pool: Phaser.Physics.Arcade.Group, x: number, y: number, angle: number, lead = 0): boolean {
     if (now < this.nextShotAt) return false;
     const { pellets, spread, jitter, bulletSpeed, range, damage, fireRate } = this.def;
-    const lifetimeMs = (range / bulletSpeed) * 1000;
+    const lifetimeMs = ((range + lead) / bulletSpeed) * 1000;
+    const muzzleX = x + Math.cos(angle) * lead;
+    const muzzleY = y + Math.sin(angle) * lead;
     let fired = 0;
     for (let i = 0; i < pellets; i++) {
       const bullet = pool.get() as Bullet | null;
@@ -29,7 +35,8 @@ export class Weapon {
       if (!bullet) break;
       const fan = pellets > 1 ? (i / (pellets - 1) - 0.5) * spread : 0;
       const deviation = jitter > 0 ? Phaser.Math.FloatBetween(-jitter, jitter) : 0;
-      bullet.fire(x, y, angle + fan + deviation, bulletSpeed, lifetimeMs, damage, this.def.id);
+      const a = angle + fan + deviation;
+      bullet.fire(muzzleX - Math.cos(a) * lead, muzzleY - Math.sin(a) * lead, a, bulletSpeed, lifetimeMs, damage, this.def.id);
       fired++;
     }
     if (fired === 0) return false;

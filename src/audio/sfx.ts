@@ -79,8 +79,10 @@ export const SFX: Readonly<Record<string, Recipe>> = {
     { kind: 'saw', from: 78, to: 58, decay: 0.4, attack: 0.08, gain: 0.55, lowpass: 0.08, vibrato: [0.08, 17] },
     { kind: 'noise', decay: 0.35, attack: 0.08, gain: 0.3, lowpass: 0.05 },
   ] },
-  'sfx-whoosh': { seconds: 0.5, drive: 1.1, layers: [
-    { kind: 'noise', decay: 0.2, attack: 0.15, gain: 0.55, lowpass: 0.07 },
+  // A warning, so it must carry: louder and brighter than a gust of wind.
+  'sfx-whoosh': { seconds: 0.55, drive: 2.2, layers: [
+    { kind: 'noise', decay: 0.22, attack: 0.12, gain: 1, lowpass: 0.16 },
+    { kind: 'noise', decay: 0.12, attack: 0.18, gain: 0.5, lowpass: 0.4 },
   ] },
   // Props that answer gunfire.
   'sfx-ping': { seconds: 0.35, drive: 1.2, layers: [

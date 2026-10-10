@@ -56,7 +56,7 @@ export class Arsenal {
     for (const bullet of this.bullets.getChildren() as Bullet[]) if (bullet.active) bullet.extendLife(ms);
   }
 
-  tryFire(now: number, x: number, y: number, angle: number): boolean {
-    return this.current.tryFire(now, this.bullets, x, y, angle);
+  tryFire(now: number, x: number, y: number, angle: number, lead = 0): boolean {
+    return this.current.tryFire(now, this.bullets, x, y, angle, lead);
   }
 }

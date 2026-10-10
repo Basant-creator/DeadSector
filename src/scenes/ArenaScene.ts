@@ -156,7 +156,10 @@ export class ArenaScene extends Phaser.Scene {
         const muzzle = muzzleOffset(weapon);
         const mx = this.player.x + Math.cos(angle) * muzzle;
         const my = this.player.y + Math.sin(angle) * muzzle;
-        if (this.arsenal.tryFire(now, mx, my, angle)) this.shotFeedback(weapon, angle, mx, my, now);
+        // Bullets leave from the player's centre, not the muzzle: an enemy pressed against the
+        // player stands between the two and would otherwise be skipped. Hidden under the player
+        // sprite, the tracer seems to leave the barrel; the flash is drawn at the muzzle.
+        if (this.arsenal.tryFire(now, this.player.x, this.player.y, angle, muzzle)) this.shotFeedback(weapon, angle, mx, my, now);
       }
       this.city.nav.setTarget(this.player);
       // A copy: an enemy dying mid-loop leaves the group.
@@ -224,7 +227,7 @@ export class ArenaScene extends Phaser.Scene {
     const now = this.time.now;
     const giant = enemy.kind === 'giant';
     this.fx.death(enemy.x, enemy.y, enemy.radius);
-    this.sfx.play('sfx-death', { detune: DEATH_DETUNE[enemy.kind], volume: giant ? 1 : 0.8 });
+    this.sfx.play('sfx-death', { detune: DEATH_DETUNE[enemy.kind] });
     const shake = giant ? IMPACT.shake.heavy : IMPACT.shake.kill;
     this.cameraFx.shake(shake.intensity, shake.ms, now);
     const hold = giant ? IMPACT.hitStop.giantDeath : HEAVY_KINDS.has(enemy.kind) ? IMPACT.hitStop.heavyKill : IMPACT.hitStop.kill;

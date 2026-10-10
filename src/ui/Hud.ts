@@ -50,7 +50,8 @@ export const UI_COLORS = {
 export const UI_FONT = '"Courier New", Courier, monospace';
 
 const PAD = 10;
-const PANEL = { fill: 0x0a0c10, alpha: 0.74 };
+/** Translucent enough that an enemy passing under a panel stays visible. */
+const PANEL = { fill: 0x0a0c10, alpha: 0.5 };
 const ACCENT = { health: 0xd8443a, wave: 0x3ad8e8, coin: 0xf0b030, weapon: 0xf0b030, boss: 0xe0553d } as const;
 const BAR_WIDTH = 160;
 const BAR_HEIGHT = 12;

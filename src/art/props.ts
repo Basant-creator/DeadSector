@@ -252,9 +252,10 @@ function vignette(scene: Phaser.Scene): void {
   const h = 360;
   const texture = scene.textures.createCanvas('fx-vignette', w, h)!;
   const ctx = texture.getContext();
-  const g = ctx.createRadialGradient(w / 2, h / 2, h * 0.45, w / 2, h / 2, w * 0.62);
+  // Mood at the very edges only: enemies coming on screen there must still be visible.
+  const g = ctx.createRadialGradient(w / 2, h / 2, h * 0.55, w / 2, h / 2, w * 0.66);
   g.addColorStop(0, 'rgba(4,6,10,0)');
-  g.addColorStop(1, 'rgba(4,6,10,0.75)');
+  g.addColorStop(1, 'rgba(4,6,10,0.45)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   texture.refresh();
