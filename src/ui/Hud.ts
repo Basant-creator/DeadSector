@@ -34,6 +34,10 @@ export interface HudState {
   warningBright: boolean;
   /** The mech while the player pilots it; null hides its panel. */
   mech: MechHud | null;
+  /** Small power warning during a blackout ("POWER OUT"); empty hides it. */
+  power: string;
+  /** Dims the power warning on alternate beats while the lights flicker. */
+  powerBright: boolean;
 }
 
 export interface MechHud {
@@ -115,6 +119,7 @@ export class Hud {
   private readonly heldBacking: Phaser.GameObjects.Rectangle;
   private readonly bannerText: Phaser.GameObjects.Text;
   private readonly districtText: Phaser.GameObjects.Text;
+  private readonly powerText: Phaser.GameObjects.Text;
   private readonly promptText: Phaser.GameObjects.Text;
   private readonly noticeText: Phaser.GameObjects.Text;
   private noticeTone: NoticeTone = 'info';
@@ -165,6 +170,8 @@ export class Hud {
     }
     this.healthText = text(barX + BAR_WIDTH + 10, barY - 3, 15);
     this.districtText = text(PAD + 12, PAD + 34, 12, UI_COLORS.label);
+    // A blackout's warning sits in the same panel, right of the district.
+    this.powerText = text(PAD + 254, PAD + 34, 12, UI_COLORS.warn).setOrigin(1, 0);
 
     // Wave, top centre.
     panel(GAME_WIDTH / 2 - 120, PAD, 240, 54, ACCENT.wave, 'top');
@@ -279,6 +286,7 @@ export class Hud {
     }
     this.bannerText.setText(state.banner);
     this.districtText.setText(state.district.toUpperCase());
+    this.powerText.setText(state.power).setAlpha(state.powerBright ? 1 : 0.4);
     const { boss } = state;
     for (const part of this.bossParts) part.setVisible(boss !== null);
     if (boss) {

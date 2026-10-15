@@ -37,12 +37,15 @@ interface Alarm {
   until: number;
 }
 
-/** Street points litter starts from: open asphalt along the main, north and south streets. */
-const LITTER_STARTS: readonly (readonly [number, number])[] = [[200, 900], [700, 1060], [1300, 860], [400, 90], [1500, 1810], [900, 120]];
+/** Street points litter starts from: open asphalt along the main, north and south streets and the boulevard. */
+const LITTER_STARTS: readonly (readonly [number, number])[] = [
+  [200, 2052], [700, 2212], [1300, 2012], [400, 1242], [1500, 2962], [900, 1272], [300, 560], [1700, 700], [2300, 520],
+];
 
 /**
- * The living city: lights that buzz, breathe or flash, steam from vents, litter in the wind,
- * car alarms set off by stray shots, a wind loop and the odd distant sound. All of it is
+ * The living city: lights that buzz, breathe, flash or burn (and go out when a blackout cuts
+ * them), steam from vents, litter in the wind, car alarms set off by stray shots, a wind loop
+ * and the odd distant sound. All of it is
  * presentation, quiet and below the fight; none of it blocks a view of an enemy or a bullet.
  * Driven by `update(now)` with no timers or tweens; the wind loop belongs to the AudioManager,
  * which stops it when the scene shuts down, so a restart never stacks a second one.
@@ -51,16 +54,22 @@ export class Ambience {
   private readonly scene: Phaser.Scene;
   private readonly audio: AudioManager;
   private readonly lights: readonly LightSprite[];
+  /** How lit each light is allowed to be (a blackout cuts some), 0 to 1, by index. */
+  private readonly power: (index: number, now: number) => number;
+  /** Alpha last given to each light, so unchanged lights are left alone. */
+  private readonly shown: number[];
   private readonly puffs: Puff[] = [];
   private readonly scraps: Scrap[] = [];
   private readonly alarms = new Map<number, Alarm>();
   private readonly rearmAt = new Map<number, number>();
   private nextDistantAt: number;
 
-  constructor(scene: Phaser.Scene, lights: readonly LightSprite[], audio: AudioManager) {
+  constructor(scene: Phaser.Scene, lights: readonly LightSprite[], audio: AudioManager, power: (index: number, now: number) => number) {
     this.scene = scene;
     this.audio = audio;
     this.lights = lights;
+    this.power = power;
+    this.shown = lights.map(({ light }) => light.alpha);
     const now = scene.time.now;
 
     for (const [c, r] of VENTS) {
@@ -99,10 +108,12 @@ export class Ambience {
   }
 
   update(now: number): void {
-    for (const { light, image } of this.lights) {
-      if (light.motion === 'steady') continue;
-      image.setAlpha(light.alpha * lightLevel(light.motion, light.phase, now));
-    }
+    this.lights.forEach(({ light, image }, i) => {
+      const alpha = light.alpha * lightLevel(light.motion, light.phase, now) * this.power(i, now);
+      if (alpha === this.shown[i]) return;
+      this.shown[i] = alpha;
+      image.setAlpha(alpha);
+    });
 
     for (const puff of this.puffs) {
       // Each puff rises and spreads over a cycle, fading in then out.
@@ -146,6 +157,7 @@ export class Ambience {
 export function lightLevel(motion: LightSprite['light']['motion'], phase: number, now: number): number {
   if (motion === 'pulse') return 0.75 + 0.25 * Math.sin((now / 2600) * Math.PI * 2 + phase);
   if (motion === 'police') return Math.floor(now / 350) % 2 === phase ? 1 : 0.12;
+  if (motion === 'fire') return 0.82 + 0.12 * Math.sin(now / 73 + phase) + 0.06 * Math.sin(now / 29 + phase * 3);
   if (motion === 'buzz') {
     // Mostly on; short dark stutters in a few of every 90 ms slots.
     const slot = Math.floor(now / 90);

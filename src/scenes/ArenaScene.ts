@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/AudioManager';
 import { MUSIC } from '../audio/music';
+import { BlackoutController } from '../blackout/BlackoutController';
 import { Arsenal } from '../combat/Arsenal';
 import { Bullet } from '../combat/Bullet';
 import { HEAVY_KINDS, IMPACT, WEAPON_FEEL } from '../combat/feel';
@@ -76,6 +77,8 @@ export class ArenaScene extends Phaser.Scene {
   private cameraFx!: CameraFx;
   private hitStop!: HitStop;
   private ambience!: Ambience;
+  /** Temporary blackouts: lights, darkness and its shading only, never the fight. */
+  private blackout!: BlackoutController;
   /** When each enemy last showed hit feedback; hits closer together than this share it. */
   private hitFeedbackAt = new WeakMap<Enemy, number>();
   private gameOver: GameOverScreen | null = null;
@@ -150,7 +153,8 @@ export class ArenaScene extends Phaser.Scene {
     this.cameraFx = new CameraFx(camera, this.profile.settings.shake);
 
     this.fx = new Fx(this);
-    this.ambience = new Ambience(this, this.city.lights, this.audio);
+    this.blackout = new BlackoutController(this, this.bus, this.city.lights, this.city.foreground);
+    this.ambience = new Ambience(this, this.city.lights, this.audio, (i, now) => this.blackout.power(i, now));
     this.hud = new Hud(this);
     this.enemyContext = {
       player: this.player,
@@ -204,6 +208,13 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     this.fx.update(now);
+    this.blackout.update(now, {
+      wave: this.director.waveNumber,
+      waveActive: this.director.phase === 'active',
+      runOver: this.run.isOver,
+      viewer: this.player.isInVehicle ? this.mech : this.player,
+      enemies: this.enemies.getChildren() as Enemy[],
+    });
     this.ambience.update(now);
     this.audio.update(this.musicSignals(now));
     this.hud.update(this.hudState(now));
@@ -377,7 +388,7 @@ export class ArenaScene extends Phaser.Scene {
     for (let d = 4; d <= 16 && !hit; d += 4) {
       hit = this.city.solidAt(bullet.x + Math.cos(bullet.rotation) * d, bullet.y + Math.sin(bullet.rotation) * d);
     }
-    if (hit && (hit.kind === 'car' || hit.kind === 'dumpster' || hit.kind === 'gate')) {
+    if (hit && (hit.kind === 'car' || hit.kind === 'bus' || hit.kind === 'dumpster' || hit.kind === 'gate')) {
       this.fx.impact(bullet.x, bullet.y);
       this.bus.emit('bullet-impact', { x: bullet.x, y: bullet.y, material: 'metal', solid: hit.kind });
       if (hit.kind === 'car') this.ambience.carHit(hit.index, this.time.now);
@@ -630,6 +641,8 @@ export class ArenaScene extends Phaser.Scene {
       warning: warningLeft > 0 ? `WARNING: A GIANT IS COMING (${Math.ceil(warningLeft / 1000)})` : '',
       warningBright: Math.floor(now / 250) % 2 === 0,
       mech: this.player.isInVehicle ? this.mechHud(now) : null,
+      power: this.run.isOver ? '' : this.blackout.label,
+      powerBright: this.blackout.phase === 'out' || Math.floor(now / 200) % 2 === 0,
     };
   }
 

@@ -34,7 +34,7 @@ changes (see `MUSIC` in `src/audio/music.ts`).
 | `bass.ogg` | Distorted, driving bass line. | combat, intense, giant |
 | `lead.ogg` | Aggressive synth lead or arpeggio: the high-intensity layer. | intense, giant (lower) |
 | `giant.ogg` | Boss layer: heavy stabs, war drums, anything menacing. | giant |
-| `blackout.ogg` | Stands alone: heartbeat, filtered drone, sparse. | blackout |
+| `blackout.ogg` | Stands alone: heartbeat, filtered drone, sparse. | blackout (while the lights are out) |
 
 How loud each stem is in each state:
 
@@ -44,7 +44,7 @@ How loud each stem is in each state:
 | combat | 0.6 | 1 | 1 | 0 | 0 | 0 |
 | intense (heavy waves) | 0.4 | 1 | 1 | 0.9 | 0 | 0 |
 | giant (warning and fight) | 0 | 1 | 1 | 0.45 | 1 | 0 |
-| blackout (future) | 0 | 0 | 0 | 0 | 0 | 1 |
+| blackout (lights out) | 0 | 0 | 0 | 0 | 0 | 1 |
 
 Requirements:
 
@@ -80,7 +80,10 @@ A file named after an effect's key replaces its synthesised recipe, for example
 - Player: `sfx-hurt`, `sfx-player-death`
 - Mech: `sfx-mech-on`, `sfx-mech-off`, `sfx-clank` (hull hit), `sfx-stomp`, `sfx-explosion`
 - Interaction: `sfx-buy`, `sfx-deny`, `sfx-gate`, `sfx-switch`, `sfx-pickup` (future pickups)
-- The run: `sfx-wave` (wave starts), `sfx-victory` (sector cleared), `sfx-blackout` (future)
+- The run: `sfx-wave` (wave starts), `sfx-victory` (sector cleared)
+- Blackouts: `sfx-power-flicker` (lights start failing), `sfx-blackout` (they go out),
+  `sfx-power-restore` (relays clunk back), and `amb-lowpower` (a loop under the outage: keep
+  it seamless, like the music)
 - World: `sfx-alarm` (car alarm), ambience `amb-wind` (loop), `amb-siren`, `amb-moan`,
   `amb-clang`, `amb-crow`
 

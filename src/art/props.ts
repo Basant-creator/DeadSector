@@ -41,6 +41,7 @@ export function createPropArt(scene: Phaser.Scene): void {
   // Steam: a soft grey wisp, faint even at full alpha.
   gradient(scene, 'fx-steam', 48, 48, [[0, 0.5], [0.6, 0.18], [1, 0]], '170,176,184');
   vignette(scene);
+  darknessBrushes(scene);
 }
 
 /** A tracer: hot core at the head, cooling to orange at the tail. Drawn at world scale. */
@@ -309,6 +310,42 @@ function gradient(scene: Phaser.Scene, key: string, w: number, h: number, stops:
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   texture.refresh();
+}
+
+/**
+ * Brushes the blackout erases light into its darkness with: a soft round pool (the player, lamps,
+ * shots), a torch cone pointing along +x from its left middle, and a fade for the edge of a
+ * district's darkness, opaque on the left.
+ */
+function darknessBrushes(scene: Phaser.Scene): void {
+  gradient(scene, 'fx-dark-hole', 128, 128, [[0, 1], [0.5, 0.9], [0.8, 0.4], [1, 0]]);
+  const w = 256;
+  const h = 232;
+  const cone = scene.textures.createCanvas('fx-dark-cone', w, h)!;
+  const ctx = cone.getContext();
+  const g = ctx.createRadialGradient(0, h / 2, 0, 0, h / 2, w);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.75)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  // Soft sides; a browser without canvas filters draws them hard, which still works.
+  ctx.filter = 'blur(10px)';
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(0, h / 2 - 6);
+  ctx.lineTo(w, 8);
+  ctx.lineTo(w, h - 8);
+  ctx.lineTo(0, h / 2 + 6);
+  ctx.closePath();
+  ctx.fill();
+  cone.refresh();
+  const edge = scene.textures.createCanvas('fx-dark-edge', 32, 4)!;
+  const ectx = edge.getContext();
+  const eg = ectx.createLinearGradient(0, 0, 32, 0);
+  eg.addColorStop(0, 'rgba(255,255,255,1)');
+  eg.addColorStop(1, 'rgba(255,255,255,0)');
+  ectx.fillStyle = eg;
+  ectx.fillRect(0, 0, 32, 4);
+  edge.refresh();
 }
 
 /** Darkened screen edges: transparent centre, near-black corners. */

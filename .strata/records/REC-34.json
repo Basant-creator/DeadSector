@@ -1,0 +1,120 @@
+{
+  "id": "REC-34",
+  "schemaVersion": "0.1.0",
+  "title": "Arena blackouts, darkness lighting mask, and Downtown district expansion",
+  "intent": "Add dynamic grid power outage events with torchlight and darkness shading, and expand the city north into Downtown",
+  "intentConfidence": "DECLARED",
+  "author": {
+    "name": "Basant Bhushan",
+    "email": "basantbhushan89@gmail.com",
+    "type": "human"
+  },
+  "agent": {
+    "name": "Antigravity",
+    "model": "gemini-3.8-flash"
+  },
+  "files": [
+    {
+      "path": "src/blackout/BlackoutController.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/blackout/blackoutRules.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityArt.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/cityDetails.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/layers.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/art/props.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/assets/audio/README.md",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/AudioManager.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/audio/sfx.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/events/GameEvents.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/fx/Ambience.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/scenes/ArenaScene.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/ui/Hud.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/waves/WaveDirector.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/City.ts",
+      "changeType": "modify"
+    },
+    {
+      "path": "src/world/cityMap.ts",
+      "changeType": "modify"
+    }
+  ],
+  "attempts": [],
+  "evidence": [
+    {
+      "type": "git_commit",
+      "reference": "e68b41b773abcc3e4255cb19e5128f46e8e000da",
+      "description": "Current Git HEAD commit at time of record",
+      "confidence": "VERIFIED"
+    }
+  ],
+  "constraints": [
+    {
+      "statement": "Blackout controller handles presentation only; never touches wave spawning or combat rules directly",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Darkness mask rendered at LAYER.darkness (0.45) over ground/lights and under actors/markers",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    },
+    {
+      "statement": "Safe spawn points within preferredSpawnDistance (2000px) are prioritized to keep enemy transit reasonable across the expanded map",
+      "confidence": "DECLARED",
+      "evidence": [],
+      "status": "ACTIVE"
+    }
+  ],
+  "consequences": [],
+  "reasons": [],
+  "symbols": [],
+  "status": "UNKNOWN",
+  "result": {
+    "status": "success"
+  },
+  "createdAt": 1792073953027,
+  "updatedAt": 1792073953027
+}

@@ -8,6 +8,8 @@ export const LAYER = {
   obstacles: -1,
   props: -0.9,
   lights: 0.2,
+  /** A blackout's darkness: over the city and its light pools, under every actor and marker. */
+  darkness: 0.45,
   telegraph: 0.5,
   effects: 2.5,
   foreground: 5,

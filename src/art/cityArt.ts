@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {
-  ALLEYS, FACILITY_GATE_RECT, GATE_RECT, INDUSTRIAL, LOTS, MAP_COLS, MAP_ROWS, MECH_BAY, type Solid, SOLIDS, TILE, type TileRect,
-  WEAPON_LOCKERS,
+  ALLEYS, districtOfTile, DOWNTOWN, FACILITY_GATE_RECT, GATE_RECT, INDUSTRIAL, inTileRect, LOTS, MAP_COLS, MAP_ROWS, MECH_BAY, PLAZA,
+  type Solid, SOLIDS, TILE, type TileRect, WEAPON_LOCKERS,
 } from '../world/cityMap';
 import {
   damageGround, drawCrater, drawFacade, drawLandmarks, LANDMARKS, scatterRubble, solidIndexOf, VENTS,
@@ -13,7 +13,7 @@ import { addImage, PixelArt, seeded, shade } from './pixels';
 /**
  * The city's look, generated once at boot from the same map data the collision and navigation
  * use, so what is drawn solid is solid. Three layers at half resolution:
- * - ground: asphalt, sidewalks, concrete, dead lots, alley brick, the facility's slab yard;
+ * - ground: asphalt, sidewalks, concrete, dead lots, alley brick, the plaza's paving, slab yards;
  *   markings, potholes, broken slabs, cracks, rubble, a blast crater, the mech bay, shadows. All
  *   flat: nothing on it looks walk-blocking;
  * - obstacles: roofs with façades and landmarks, walls, cars, dumpsters, barriers, shipping
@@ -28,9 +28,9 @@ const H = MAP_ROWS * T;
 
 /**
  * How a light moves, if at all: a failing lamp that buzzes off now and then, neon that breathes,
- * or a police light bar alternating red and blue.
+ * a police light bar alternating red and blue, or a fire.
  */
-export type LightMotion = 'steady' | 'buzz' | 'pulse' | 'police';
+export type LightMotion = 'steady' | 'buzz' | 'pulse' | 'police' | 'fire';
 
 export interface CityLight {
   readonly x: number;
@@ -41,37 +41,69 @@ export interface CityLight {
   readonly motion: LightMotion;
   /** Offsets the motion so neighbours never move in step; for police, 0 red, 1 blue. */
   readonly phase: number;
+  /**
+   * Not on the city's grid: fires, batteries, generators. A blackout leaves these burning, and
+   * they are the only light in it besides the player's own.
+   */
+  readonly backup: boolean;
 }
 
 const LAMP_COLS = [9, 17, 31, 39, 53];
+/** Downtown's boulevard lamps: north side, then south side. */
+const BOULEVARD_LAMPS = { north: [4, 25, 47, 57, 70, 86], south: [10, 25, 47, 61, 75, 86] };
 const light = (x: number, y: number, color: number, radius: number, alpha: number, motion: LightMotion = 'steady', phase = 0): CityLight =>
-  ({ x, y, color, radius, alpha, motion, phase });
+  ({ x, y, color, radius, alpha, motion, phase, backup: false });
+/** The same light, on its own power: it stays lit through a blackout. */
+const offGrid = (l: CityLight): CityLight => ({ ...l, backup: true });
 const centre = (rect: TileRect) => ({ x: (rect[0] + rect[2] / 2) * TILE, y: (rect[1] + rect[3] / 2) * TILE });
+/** Street lamps are amber, 150 px, on the grid: their heads are drawn over the street. */
+export const isStreetLamp = (l: CityLight) => l.color === PALETTE.amber && l.radius === 150 && !l.backup;
 
-/** Street lamps along the main street (amber, one failing), neon in the alleys, landmark lights. */
+/**
+ * Street lamps along the boulevard and the main street (amber, a couple failing), neon on
+ * Downtown's shops and in the alleys, landmark lights. A few are off the grid: the fire in the
+ * burned bus, a checkpoint's battery floodlight, the lockers' lamps, the police car's light bar,
+ * and the facility's bay on its generator.
+ */
 export const CITY_LIGHTS: readonly CityLight[] = [
-  ...LAMP_COLS.map((c, i) => light(c * TILE + 16, 25 * TILE + 16, PALETTE.amber, 150, 0.3, i === 2 ? 'buzz' : 'steady', i)),
-  ...LAMP_COLS.map((c, i) => light((c + 4) * TILE + 16, 34 * TILE + 16, PALETTE.amber, 150, 0.3, 'steady', i)),
-  light(2112, 352, PALETTE.cyan, 130, 0.35, 'pulse', 0.3),
-  light(2384, 1040, PALETTE.magenta, 140, 0.35, 'pulse', 1.7),
-  light(2656, 640, PALETTE.cyan, 120, 0.35, 'buzz', 4),
-  light(2240, 1536, PALETTE.magenta, 130, 0.35, 'pulse', 2.9),
-  light(2752, 1830, PALETTE.amber, 110, 0.3),
-  light(2020, 880, PALETTE.amber, 100, 0.35),
-  ...WEAPON_LOCKERS.map((l) => light(l.wall.x, l.wall.y + 20, PALETTE.amber, 80, 0.35)),
+  // Downtown.
+  ...BOULEVARD_LAMPS.north.map((c, i) => light(c * TILE + 16, 13 * TILE + 16, PALETTE.amber, 150, 0.3, i === 3 ? 'buzz' : 'steady', i)),
+  ...BOULEVARD_LAMPS.south.map((c, i) => light(c * TILE + 16, 22 * TILE + 16, PALETTE.amber, 150, 0.3, 'steady', i)),
+  light(centre(LANDMARKS.cinema.rect).x, 6 * TILE + 8, PALETTE.magenta, 170, 0.35, 'pulse', 0.6),
+  light(28 * TILE, 28 * TILE, PALETTE.cyan, 110, 0.3, 'pulse', 2.4),
+  light(42 * TILE, 28 * TILE, PALETTE.magenta, 110, 0.3, 'buzz', 3),
+  light(8 * TILE, 23 * TILE + 8, PALETTE.magenta, 100, 0.35, 'pulse', 1.2),
+  light(17 * TILE, 23 * TILE + 8, PALETTE.cyan, 100, 0.35, 'buzz', 5),
+  light(54 * TILE, 23 * TILE + 8, PALETTE.cyan, 100, 0.35, 'pulse', 3.3),
+  light(13 * TILE, 30 * TILE, PALETTE.magenta, 90, 0.35, 'buzz', 7),
+  light(70 * TILE, 10 * TILE + 16, PALETTE.amber, 170, 0.25),
+  light(87 * TILE, 21 * TILE, PALETTE.amber, 120, 0.3, 'buzz', 2),
+  offGrid(light(centre(LANDMARKS.burnedBus.rect).x, centre(LANDMARKS.burnedBus.rect).y, PALETTE.fireEdge, 140, 0.35, 'fire', 0.5)),
+  offGrid(light(61 * TILE, 18 * TILE, 0xdce6ff, 150, 0.25)),
+  // The main street.
+  ...LAMP_COLS.map((c, i) => light(c * TILE + 16, 61 * TILE + 16, PALETTE.amber, 150, 0.3, i === 2 ? 'buzz' : 'steady', i)),
+  ...LAMP_COLS.map((c, i) => light((c + 4) * TILE + 16, 70 * TILE + 16, PALETTE.amber, 150, 0.3, 'steady', i)),
+  // The Narrow Alleys.
+  light(2112, 1504, PALETTE.cyan, 130, 0.35, 'pulse', 0.3),
+  light(2384, 2192, PALETTE.magenta, 140, 0.35, 'pulse', 1.7),
+  light(2656, 1792, PALETTE.cyan, 120, 0.35, 'buzz', 4),
+  light(2240, 2688, PALETTE.magenta, 130, 0.35, 'pulse', 2.9),
+  light(2752, 2982, PALETTE.amber, 110, 0.3),
+  light(2020, 2032, PALETTE.amber, 100, 0.35),
+  ...WEAPON_LOCKERS.map((l) => offGrid(light(l.wall.x, l.wall.y + 20, PALETTE.amber, 80, 0.35))),
   // Landmarks: the clinic cross and the motel sign glow; the police car's bar alternates.
   light(centre(LANDMARKS.clinic.rect).x, centre(LANDMARKS.clinic.rect).y - 12, PALETTE.cyan, 90, 0.3, 'pulse', 0.8),
   light(centre(LANDMARKS.motel.rect).x, LANDMARKS.motel.rect[1] * TILE + 32, PALETTE.magenta, 100, 0.35, 'pulse', 2.2),
-  light(centre(LANDMARKS.policeCar.rect).x, centre(LANDMARKS.policeCar.rect).y, 0xff3030, 70, 0.3, 'police', 0),
-  light(centre(LANDMARKS.policeCar.rect).x, centre(LANDMARKS.policeCar.rect).y, 0x3060ff, 70, 0.3, 'police', 1),
+  offGrid(light(centre(LANDMARKS.policeCar.rect).x, centre(LANDMARKS.policeCar.rect).y, 0xff3030, 70, 0.3, 'police', 0)),
+  offGrid(light(centre(LANDMARKS.policeCar.rect).x, centre(LANDMARKS.policeCar.rect).y, 0x3060ff, 70, 0.3, 'police', 1)),
   // Industrial Facility: floodlights over the yard and the bay, a failing one by the tanks, and
-  // a warning beacon breathing over the mech.
-  light(MECH_BAY.x, MECH_BAY.y - 20, PALETTE.amber, 170, 0.3),
-  light(MECH_BAY.x, MECH_BAY.y - 60, PALETTE.cyan, 70, 0.3, 'pulse', 1.1),
-  light(1488, 2050, PALETTE.amber, 140, 0.25),
-  light(9 * TILE, 71 * TILE + 16, PALETTE.amber, 110, 0.3),
-  light(65 * TILE, 68 * TILE, PALETTE.amber, 110, 0.3, 'buzz', 6),
-  light(81 * TILE, 73 * TILE, PALETTE.amber, 110, 0.3),
+  // a warning beacon breathing over the mech. The bay runs on the facility's generator.
+  offGrid(light(MECH_BAY.x, MECH_BAY.y - 20, PALETTE.amber, 170, 0.3)),
+  offGrid(light(MECH_BAY.x, MECH_BAY.y - 60, PALETTE.cyan, 70, 0.3, 'pulse', 1.1)),
+  light(1488, 3202, PALETTE.amber, 140, 0.25),
+  light(9 * TILE, 107 * TILE + 16, PALETTE.amber, 110, 0.3),
+  light(65 * TILE, 104 * TILE, PALETTE.amber, 110, 0.3, 'buzz', 6),
+  light(81 * TILE, 109 * TILE, PALETTE.amber, 110, 0.3),
 ];
 
 /** A light pool in the scene, with the light it shows, for `Ambience` to animate. */
@@ -87,8 +119,11 @@ export function createCityArt(scene: Phaser.Scene): void {
   addImage(scene, 'city-foreground', foreground(), 1);
 }
 
-/** Put the city's layers into a scene. Called on every scene start. Returns the light pools. */
-export function renderCity(scene: Phaser.Scene): LightSprite[] {
+/**
+ * Put the city's layers into a scene. Called on every scene start. Returns the light pools, and
+ * the foreground layer (cables, lamp heads), which is drawn over everything else.
+ */
+export function renderCity(scene: Phaser.Scene): { lights: LightSprite[]; foreground: Phaser.GameObjects.Image } {
   const layer = (key: string, depth: number) =>
     scene.add.image(0, 0, key).setOrigin(0).setScale(WORLD_ART_SCALE).setDepth(depth);
   layer('city-ground', LAYER.ground);
@@ -102,30 +137,39 @@ export function renderCity(scene: Phaser.Scene): LightSprite[] {
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(LAYER.lights),
   }));
-  layer('city-foreground', LAYER.foreground);
-  return lights;
+  const foreground = layer('city-foreground', LAYER.foreground);
+  return { lights, foreground };
 }
 
-type Material = 'asphalt' | 'sidewalk' | 'lot' | 'alley' | 'concrete' | 'yard';
+type Material = 'asphalt' | 'sidewalk' | 'lot' | 'alley' | 'concrete' | 'yard' | 'plaza';
 
 /** The concrete pad in front of the gate, ringed by its barriers. */
-const GATE_PAD: TileRect = [56, 26, 8, 7];
+const GATE_PAD: TileRect = [56, 62, 8, 7];
 /** The mech bay's painted pad, centred on the mech. */
-const BAY_PAD: TileRect = [42, 70, 9, 7];
-
-function inRect([c, r, w, h]: TileRect, col: number, row: number): boolean {
-  return col >= c && col < c + w && row >= r && row < r + h;
-}
+const BAY_PAD: TileRect = [42, 106, 9, 7];
+/** Downtown's transit yard: slab concrete round the bus sheds, east of the checkpoint. */
+const TRANSIT_YARD: TileRect = [64, 7, 25, 25];
+/** Downtown's buildings: the ground round each is sidewalk. */
+const DOWNTOWN_BUILDINGS = SOLIDS
+  .filter((s) => s.kind === 'building' && districtOfTile(s.rect[0], s.rect[1]) === DOWNTOWN)
+  .map((s) => s.rect);
 
 function materials(): Material[] {
   const out: Material[] = new Array(MAP_COLS * MAP_ROWS).fill('asphalt');
-  const isLot = (col: number, row: number) => LOTS.some((lot) => inRect(lot, col, row));
+  const isLot = (col: number, row: number) => LOTS.some((lot) => inTileRect(lot, col, row));
+  const besideDowntownBuilding = (col: number, row: number) =>
+    DOWNTOWN_BUILDINGS.some(([c, r, w, h]) => col >= c - 1 && col <= c + w && row >= r - 1 && row <= r + h);
   for (let row = 0; row < MAP_ROWS; row++) {
     for (let col = 0; col < MAP_COLS; col++) {
       const i = row * MAP_COLS + col;
-      if (row >= INDUSTRIAL.area[1]) out[i] = 'yard';
-      else if (col >= ALLEYS.area[0]) out[i] = 'alley';
-      else if (inRect(GATE_PAD, col, row)) out[i] = 'concrete';
+      const district = districtOfTile(col, row);
+      if (district === INDUSTRIAL) out[i] = 'yard';
+      else if (district === ALLEYS) out[i] = 'alley';
+      else if (district === DOWNTOWN) {
+        if (inTileRect(PLAZA, col, row)) out[i] = 'plaza';
+        else if (besideDowntownBuilding(col, row)) out[i] = 'sidewalk';
+        else if (inTileRect(TRANSIT_YARD, col, row)) out[i] = 'yard';
+      } else if (inTileRect(GATE_PAD, col, row)) out[i] = 'concrete';
       else if (isLot(col, row)) out[i] = 'lot';
       else {
         let ring = false;
@@ -152,7 +196,11 @@ function ground(): PixelArt {
       else if (m === 'sidewalk') color = x % T === 0 || y % T === 0 ? p.concreteSeam : n < 0.12 ? p.concreteLight : p.concrete;
       else if (m === 'lot') color = n < 0.14 ? p.dirtLight : n < 0.24 ? p.dirtDark : p.dirt;
       else if (m === 'concrete') color = (x % (2 * T) === 0 || y % (2 * T) === 0) ? p.concreteSeam : n < 0.1 ? p.concrete : 0x3e4147;
-      else if (m === 'yard') {
+      else if (m === 'plaza') {
+        // Big square paving stones, a tile and a half a side, in two worn greys.
+        const stone = (Math.floor(x / 24) * 5 + Math.floor(y / 24) * 3) % 4;
+        color = x % 24 === 0 || y % 24 === 0 ? 0x2a2b30 : n < 0.08 ? 0x4a4b52 : stone === 0 ? 0x3a3b41 : 0x404148;
+      } else if (m === 'yard') {
         // Big poured slabs, two tiles a side, weathered unevenly.
         const slab = (Math.floor(x / (2 * T)) * 7 + Math.floor(y / (2 * T)) * 13) % 5;
         color = x % (2 * T) === 0 || y % (2 * T) === 0 ? 0x1e2024 : n < 0.1 ? 0x34373c : slab === 0 ? 0x2a2c30 : 0x2e3135;
@@ -237,23 +285,34 @@ function ground(): PixelArt {
     }
   }
   for (const lane of [44, 49]) {
-    for (let y = 60 * T + 4; y < BAY_PAD[1] * T - 4; y += 12) a.rect(lane * T, y, 2, 7, p.paintYellow, 170);
+    for (let y = 96 * T + 4; y < BAY_PAD[1] * T - 4; y += 12) a.rect(lane * T, y, 2, 7, p.paintYellow, 170);
   }
   drawBayPad(a, rand);
 
   // Main street markings: a faded centre line and two zebra crossings.
   for (let x = 2 * T; x < 59 * T; x += 48) {
-    for (let dx = 0; dx < 20; dx++) for (let dy = -1; dy <= 0; dy++) if (rand() > 0.15) a.px(x + dx, 30 * T + dy, p.paintYellow, 200);
+    for (let dx = 0; dx < 20; dx++) for (let dy = -1; dy <= 0; dy++) if (rand() > 0.15) a.px(x + dx, 66 * T + dy, p.paintYellow, 200);
   }
   // Zebra crossings: bars running with the traffic, stacked across the road.
-  for (const col of [21, 43]) {
-    for (let y = 26 * T + 2; y < 34 * T - 4; y += 8) {
-      for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 24; dx++) a.px(col * T + dx, y + dy, rand() < 0.1 ? p.concreteSeam : p.paintWhite, 120);
+  const zebra = (col: number, fromRow: number, toRow: number) => {
+    for (let y = fromRow * T + 2; y < toRow * T - 4; y += 8) {
+      for (let dy = 0; dy < 4; dy++) {
+        for (let dx = 0; dx < 24; dx++) {
+          if (onMaterial(col * T + dx, y + dy, 'asphalt')) a.px(col * T + dx, y + dy, rand() < 0.1 ? p.concreteSeam : p.paintWhite, 120);
+        }
+      }
     }
+  };
+  for (const col of [21, 43]) zebra(col, 62, 70);
+  // The boulevard: a double centre line broken by the plaza, lane dashes, crossings at the avenues.
+  for (let x = T; x < 89 * T; x++) {
+    for (const yy of [18 * T - 2, 18 * T + 1]) if (onMaterial(x, yy, 'asphalt') && rand() > 0.12) a.px(x, yy, p.paintYellow, 190);
+    for (const yy of [15 * T + 8, 20 * T + 8]) if (x % 40 < 18 && onMaterial(x, yy, 'asphalt') && rand() > 0.15) a.px(x, yy, p.paintWhite, 120);
   }
+  for (const col of [23, 44, 60]) zebra(col, 13, 23);
   // Manholes in the streets, square grates in the alleys: steam rises from both.
   for (const [mx, my] of VENTS) {
-    if (mx >= ALLEYS.area[0]) {
+    if (districtOfTile(mx, my) === ALLEYS) {
       a.rect(mx * T - 4, my * T - 4, 9, 9, 0x141519);
       for (let k = -3; k <= 3; k += 2) a.rect(mx * T - 3, my * T + k, 7, 1, 0x2a2c31);
       continue;
@@ -267,7 +326,13 @@ function ground(): PixelArt {
   damageGround(a, rand, (x, y) => onMaterial(x, y, 'asphalt'), (x, y) => onMaterial(x, y, 'sidewalk'), W, H);
   drawCrater(a, rand);
   // Rubble where walls have crumbled: alley corners, the street by the crashed helicopter.
-  for (const [rc, rr] of [[66, 12], [74, 47], [83, 22], [72, 29], [35, 54], [42, 44], [59, 14]]) scatterRubble(a, rc * T, rr * T, 14, rand);
+  for (const [rc, rr] of [[66, 48], [74, 83], [83, 58], [72, 65], [35, 90], [42, 80], [59, 50]]) scatterRubble(a, rc * T, rr * T, 14, rand);
+  // Downtown: debris fallen from the looted shops, round the checkpoint and the burned bus.
+  for (const [rc, rr] of [[11, 22], [21, 14], [48, 22], [26, 29], [43, 13], [62, 21], [74, 22], [12, 18], [20, 15]]) {
+    scatterRubble(a, rc * T, rr * T, 16, rand);
+  }
+  drawScorch(a, rand);
+  drawPlaza(a, rand);
   // Curbs: a lit edge where sidewalk meets road.
   for (let y = 0; y < H; y += 1) {
     for (let x = 0; x < W; x += 1) {
@@ -278,13 +343,15 @@ function ground(): PixelArt {
   }
   // Parking bays along the north and south streets; storm drains at the curbs.
   for (let x = 6 * T; x < 58 * T; x += 2 * T) {
-    for (const yy of [4 * T, 53 * T]) if (onMaterial(x, yy, 'asphalt')) a.rect(x, yy - 6, 1, 6, p.paintWhite, 110);
+    for (const yy of [40 * T, 89 * T]) if (onMaterial(x, yy, 'asphalt')) a.rect(x, yy - 6, 1, 6, p.paintWhite, 110);
   }
-  for (const [dc, dr] of [[12, 25], [33, 25], [47, 34], [22, 34], [56, 34]]) a.rect(dc * T, dr * T - 2, 6, 2, 0x111215);
+  for (const [dc, dr] of [[12, 61], [33, 61], [47, 70], [22, 70], [56, 70], [9, 23], [30, 30], [55, 23]]) a.rect(dc * T, dr * T - 2, 6, 2, 0x111215);
+  // Bus bays painted in the transit yard.
+  for (let x = 66 * T; x < 88 * T; x += 3 * T) if (onMaterial(x, 21 * T, 'yard')) a.rect(x, 20 * T, 1, 2 * T, p.paintYellow, 120);
   // The gate pad: hazard chevrons painted toward the gate.
   for (let i = 0; i < 4; i++) {
     const cx = 58 * T + i * 10;
-    for (let k = 0; k < 6; k++) { a.px(cx + k, 30 * T - 6 + k, p.hazardAmber, 150); a.px(cx + k, 30 * T + 5 - k, p.hazardAmber, 150); }
+    for (let k = 0; k < 6; k++) { a.px(cx + k, 66 * T - 6 + k, p.hazardAmber, 150); a.px(cx + k, 66 * T + 5 - k, p.hazardAmber, 150); }
   }
 
   // Shadows cast down-right by every solid.
@@ -340,7 +407,11 @@ function drawSolid(a: PixelArt, { kind, rect }: Solid, rand: () => number): void
   const pw = w * T;
   const ph = h * T;
   const p = PALETTE;
-  if (kind === 'building' && r >= INDUSTRIAL.area[1]) {
+  if (kind === 'bus') {
+    drawBus(a, x, y, pw, ph, rand, solidIndexOf(rect) === solidIndexOf(LANDMARKS.burnedBus.rect));
+  } else if (kind === 'monument') {
+    drawMonument(a, x, y, pw, ph, rand);
+  } else if (kind === 'building' && r >= INDUSTRIAL.area[1]) {
     drawWarehouse(a, rect, rand);
   } else if (kind === 'building') {
     const roof = p.roofs[Math.floor(rand() * p.roofs.length)];
@@ -475,6 +546,104 @@ function drawCar(a: PixelArt, x: number, y: number, pw: number, ph: number, rand
   }
 }
 
+/**
+ * A city bus seen from above: a long roof with AC units, windows down both sides, the windscreen
+ * at one end. Burned out, it is charred to the frame and still glowing in places.
+ */
+function drawBus(a: PixelArt, x: number, y: number, pw: number, ph: number, rand: () => number, burned: boolean): void {
+  const p = PALETTE;
+  const horizontal = pw >= ph;
+  const len = horizontal ? pw : ph;
+  const wid = horizontal ? ph : pw;
+  const flip = rand() < 0.5;
+  const at = (u: number, v: number, du: number, dv: number, color: number, alpha = 255) => {
+    const uu = flip ? len - u - du : u;
+    if (horizontal) a.rect(x + uu, y + v, du, dv, color, alpha);
+    else a.rect(x + v, y + uu, dv, du, color, alpha);
+  };
+  const body = burned ? 0x1c1916 : [0x2a5a64, 0x8a6a22][Math.floor(rand() * 2)];
+  a.rect(x, y, pw, ph, 0x111215);
+  at(1, 1, len - 2, wid - 2, shade(body, -0.3));
+  at(2, 2, len - 4, wid - 4, body);
+  // Windows down both sides, the windscreen at the front.
+  for (let u = 6; u < len - 10; u += 6) {
+    at(u, 2, 4, 2, burned ? 0x0c0d0f : p.glass);
+    at(u, wid - 4, 4, 2, burned ? 0x0c0d0f : p.glass);
+  }
+  at(len - 5, 3, 2, wid - 6, burned ? 0x0c0d0f : p.glass);
+  if (!burned) {
+    at(len - 4, 4, 1, 2, p.glassGlint);
+    at(len * 0.3, wid / 2 - 3, 10, 6, p.metal);
+    at(len * 0.3 + 1, wid / 2 - 2, 8, 4, p.metalDark);
+    at(len * 0.65, wid / 2 - 2, 6, 4, p.metalDark);
+    at(4, wid / 2 - 1, len - 12, 1, shade(body, 0.2)); // a stripe along the roof
+    for (let i = 0; i < 16; i++) at(3 + rand() * (len - 6), 3 + rand() * (wid - 6), 1, 1, p.rust);
+    return;
+  }
+  // Burned: the roof caved to its ribs, soot, and embers still glowing.
+  for (let u = 4; u < len - 4; u += 5) at(u, 3, 1, wid - 6, 0x2e2a26);
+  for (let i = 0; i < 60; i++) at(3 + rand() * (len - 6), 3 + rand() * (wid - 6), 1, 1, rand() < 0.6 ? 0x0a0908 : 0x3a2a20);
+  for (let i = 0; i < 14; i++) {
+    const roll = rand();
+    at(4 + rand() * (len - 8), 4 + rand() * (wid - 8), 1, 1, roll < 0.4 ? p.fireMid : roll < 0.8 ? p.fireEdge : p.fireCore);
+  }
+}
+
+/** The plaza's statue: a stepped stone plinth, a dark bronze figure, its raised arm broken off. */
+function drawMonument(a: PixelArt, x: number, y: number, pw: number, ph: number, rand: () => number): void {
+  const p = PALETTE;
+  a.rect(x, y, pw, ph, 0x3e3f45);
+  a.rect(x + 2, y + 2, pw - 4, ph - 4, 0x4a4b52);
+  a.rect(x + 6, y + 6, pw - 12, ph - 12, 0x56575e);
+  a.rect(x, y, pw, 1, 0x5e6068);
+  a.rect(x + 2, y + 2, pw - 4, 1, 0x62646c);
+  for (let i = 0; i < 30; i++) a.px(x + rand() * pw, y + rand() * ph, rand() < 0.5 ? 0x34353a : 0x6a6c72);
+  // The figure: shadow, body, head, one arm raised and snapped at the elbow.
+  const cx = x + pw / 2;
+  const cy = y + ph / 2;
+  a.ellipse(cx + 3, cy + 3, 9, 7, p.shadow, 130);
+  a.ellipse(cx, cy, 9, 7, 0x2a3a34);
+  a.ellipse(cx - 1, cy - 1, 7, 5, 0x3a5046);
+  a.disc(cx + 1, cy - 1, 3, 0x4a6a5a);
+  a.rect(cx + 6, cy - 9, 3, 6, 0x3a5046);
+  a.px(cx + 7, cy - 10, 0x2a3a34);
+  // Verdigris streaks, and the arm lying on the plinth.
+  for (let i = 0; i < 10; i++) a.px(cx - 6 + rand() * 12, cy - 4 + rand() * 8, 0x5a8a74);
+  a.rect(x + 7, y + ph - 10, 6, 2, 0x3a5046);
+}
+
+/** Scorch round the burned bus, and soot blown along the boulevard. Flat: walkable. */
+function drawScorch(a: PixelArt, rand: () => number): void {
+  const [c, r, w, h] = LANDMARKS.burnedBus.rect;
+  const cx = (c + w / 2) * T;
+  const cy = (r + h / 2) * T;
+  a.ellipse(cx, cy, w * T * 0.75, h * T * 1.6, 0x0c0d0f, 120);
+  a.ellipse(cx, cy, w * T * 0.6, h * T * 1.1, 0x0a0b0c, 150);
+  for (let i = 0; i < 160; i++) {
+    const ang = rand() * Math.PI * 2;
+    const d = rand() * w * T * 0.8;
+    a.px(cx + Math.cos(ang) * d + d * 0.4, cy + Math.sin(ang) * d * 0.4, 0x101113, 160);
+  }
+}
+
+/** The plaza: a ring of darker paving round the monument, and leaves and paper blown across it. */
+function drawPlaza(a: PixelArt, rand: () => number): void {
+  const [mc, mr, mw, mh] = LANDMARKS.monument.rect;
+  const cx = (mc + mw / 2) * T;
+  const cy = (mr + mh / 2) * T;
+  for (let k = 0; k < 360; k++) {
+    const ang = (k / 360) * Math.PI * 2;
+    for (const rr of [52, 53, 58]) a.px(cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr, 0x2c2d32, 200);
+  }
+  // Leaves and paper blown into the corners.
+  const [pc, pr, pw, ph] = PLAZA;
+  for (let i = 0; i < 220; i++) {
+    const x = pc * T + rand() * pw * T;
+    const y = pr * T + rand() * ph * T;
+    a.px(x, y, rand() < 0.5 ? 0x4a3a24 : 0x5a5a52, 160);
+  }
+}
+
 /** A warehouse seen from above: a corrugated roof with skylight strips, vents, and a loading façade. */
 function drawWarehouse(a: PixelArt, rect: TileRect, rand: () => number): void {
   const [c, r, w, h] = rect;
@@ -532,8 +701,10 @@ function foreground(): PixelArt {
   const rand = seeded(77);
   // Cables slung across the alleys between rooftops, sagging a little.
   const spans: [number, number, number][] = [
-    [64 * T + 8, 67 * T, 6 * T], [64 * T + 8, 67 * T, 19 * T], [64 * T + 8, 67 * T, 44 * T],
-    [73 * T, 76 * T, 9 * T], [73 * T, 76 * T, 35 * T], [82 * T, 84 * T, 16 * T], [82 * T, 84 * T, 52 * T],
+    [64 * T + 8, 67 * T, 42 * T], [64 * T + 8, 67 * T, 55 * T], [64 * T + 8, 67 * T, 80 * T],
+    [73 * T, 76 * T, 45 * T], [73 * T, 76 * T, 71 * T], [82 * T, 84 * T, 52 * T], [82 * T, 84 * T, 88 * T],
+    // Downtown's alleys.
+    [12 * T, 14 * T, 26 * T], [12 * T, 14 * T, 31 * T], [10 * T, 12 * T, 10 * T], [34 * T, 36 * T, 31 * T], [74 * T, 76 * T, 27 * T],
   ];
   for (const [x0, x1, y] of spans) {
     const sag = 3 + rand() * 3;
@@ -542,8 +713,8 @@ function foreground(): PixelArt {
       a.px(x, y + Math.sin(t * Math.PI) * sag, 0x0e1014, 230);
     }
   }
-  // Lamp heads over the main street sidewalks.
-  for (const light of CITY_LIGHTS.filter((l) => l.color === PALETTE.amber && l.radius === 150)) {
+  // Lamp heads over the street sidewalks.
+  for (const light of CITY_LIGHTS.filter(isStreetLamp)) {
     const lx = light.x / WORLD_ART_SCALE;
     const ly = light.y / WORLD_ART_SCALE;
     a.rect(lx - 3, ly - 1, 6, 3, 0x2a2c30);

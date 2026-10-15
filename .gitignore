@@ -12,3 +12,5 @@ dist
 
 # Claude Code: personal, machine-specific settings (the Strata hook needs a local strata install).
 .claude/settings.local.json
+# Strata's local cache (records in .strata/records/ are meant to be committed)
+.strata/docs-state.json

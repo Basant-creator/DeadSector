@@ -204,6 +204,24 @@ export const SFX: Readonly<Record<string, Recipe>> = {
     { kind: 'saw', from: 180, to: 30, decay: 0.4, gain: 0.35, lowpass: 0.1 },
     { kind: 'noise', decay: 0.02, gain: 0.5, highpass: 0.4 },
   ] },
+  // A failing grid: mains buzz and arcing crackle, both stuttering.
+  'sfx-power-flicker': { seconds: 1.4, drive: 1.6, layers: [
+    { kind: 'square', from: 100, to: 100, decay: 0.9, gain: 0.2, lowpass: 0.15, tremolo: [1, 13] },
+    { kind: 'noise', decay: 0.6, gain: 0.4, highpass: 0.35, tremolo: [1, 23] },
+  ] },
+  // Relays clunk shut and the mains hum climbs back up to pitch.
+  'sfx-power-restore': { seconds: 1.3, drive: 1.6, layers: [
+    { kind: 'noise', decay: 0.03, gain: 0.6, lowpass: 0.25 },
+    { kind: 'saw', from: 35, to: 120, decay: 0.6, attack: 0.25, gain: 0.3, lowpass: 0.1 },
+    { kind: 'square', from: 100, to: 100, decay: 0.5, attack: 0.3, gain: 0.12, lowpass: 0.12, tremolo: [0.6, 9] },
+  ] },
+  // Under a blackout: a dying transformer's hum and the odd crackle. Every rate fits a whole
+  // number of cycles into the 4 s loop.
+  'amb-lowpower': { seconds: 4, drive: 1, loop: true, layers: [
+    { kind: 'sine', from: 50, to: 50, decay: 1e6, gain: 0.5, tremolo: [0.3, 0.5] },
+    { kind: 'square', from: 100, to: 100, decay: 1e6, gain: 0.08, lowpass: 0.05, tremolo: [0.5, 0.75] },
+    { kind: 'noise', decay: 1e6, gain: 0.12, highpass: 0.5, tremolo: [0.9, 1.25] },
+  ] },
   'sfx-explosion': { seconds: 1.4, drive: 2.6, layers: [
     { kind: 'noise', decay: 0.45, gain: 1, lowpass: 0.07 },
     { kind: 'sine', from: 80, to: 24, decay: 0.5, gain: 1 },

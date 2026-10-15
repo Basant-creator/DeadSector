@@ -24,6 +24,8 @@ const MIN_GAP_MS: Readonly<Record<string, number>> = {
  */
 const MAX_VOICES = 20;
 const ALWAYS = new Set(['sfx-pistol', 'sfx-shotgun', 'sfx-rifle', 'sfx-hurt', 'sfx-slam', 'sfx-cannon', 'sfx-clank', 'sfx-stomp']);
+/** The low-power hum under a blackout: how loud, and how long it takes to swell or die away. */
+const HUM = { key: 'amb-lowpower', volume: 0.35, fadeMs: 900 };
 /** Death sounds pitched by size: small bodies higher, big ones lower, in cents. */
 const DEATH_DETUNE: Readonly<Record<EnemyKind, number>> = { walker: 0, runner: 350, brute: -450, elite: -150, giant: -1000 };
 /** Gun loudness against each other: the rifle fires ten times a second, the mech's cannon is loud enough. */
@@ -51,6 +53,9 @@ export class AudioManager {
   private readonly director = new MusicDirector();
   private settings: AudioSettings;
   private blackout = false;
+  /** The blackout's hum, made on the first blackout and kept for the next; null before that. */
+  private hum: { sound: Phaser.Sound.BaseSound; gain: number; target: number } | null = null;
+  private lastHumTick = 0;
   private hurtUntil = 0;
   private destroyed = false;
 
@@ -110,6 +115,7 @@ export class AudioManager {
     sound.mute = settings.muted;
     this.music.setBusVolume(settings.music);
     for (const loop of this.loops) (loop.sound as Phaser.Sound.WebAudioSound).setVolume?.(loop.volume * settings.sfx);
+    this.applyHum();
   }
 
   /**
@@ -161,6 +167,41 @@ export class AudioManager {
       if (next) this.music.setState(next);
     }
     this.music.update();
+    this.updateHum();
+  }
+
+  /** Swell or fade the blackout hum toward its target; stop it once silent. */
+  private updateHum(): void {
+    const now = performance.now();
+    const step = Math.min(250, now - this.lastHumTick) / HUM.fadeMs;
+    this.lastHumTick = now;
+    const hum = this.hum;
+    if (!hum || hum.gain === hum.target) return;
+    hum.gain = hum.gain < hum.target ? Math.min(hum.target, hum.gain + step) : Math.max(hum.target, hum.gain - step);
+    this.applyHum();
+    if (hum.gain === 0 && hum.sound.isPlaying) hum.sound.stop();
+  }
+
+  private applyHum(): void {
+    if (this.hum) (this.hum.sound as Phaser.Sound.WebAudioSound).setVolume?.(this.hum.gain * HUM.volume * this.settings.sfx);
+  }
+
+  /** The hum's target: 1 to swell in, 0 to die away. Missing or locked audio just stays silent. */
+  private humTo(target: number): void {
+    if (this.destroyed || !this.scene.cache.audio.exists(HUM.key)) return;
+    if (!this.hum) {
+      if (target === 0) return;
+      this.hum = { sound: this.scene.sound.add(HUM.key, { loop: true, volume: 0 }), gain: 0, target };
+    }
+    this.hum.target = target;
+    if (target > 0 && !this.hum.sound.isPlaying) {
+      try {
+        this.hum.sound.play({ loop: true, volume: 0 });
+      } catch {
+        // No hum; the blackout still happens.
+      }
+      this.applyHum();
+    }
   }
 
   private startMusic(): void {
@@ -218,16 +259,25 @@ export class AudioManager {
     e.on('run-ended', ({ outcome }) => {
       if (outcome === 'cleared') this.play('sfx-victory');
     });
-    // Future hooks.
-    e.on('pickup-collected', () => this.play('sfx-pickup'));
+    // Blackouts: crackle as the lights flicker, a dying whine as they go, a low hum while they
+    // are out, and the relays clunking back. The music drops to its blackout stem meanwhile.
+    e.on('blackout-warning', () => this.play('sfx-power-flicker', { volume: 0.7 }));
     e.on('blackout-started', () => {
       this.blackout = true;
-      this.play('sfx-blackout');
+      this.play('sfx-blackout', { volume: 0.9 });
+      this.humTo(1);
+    });
+    e.on('blackout-restoring', () => {
+      this.blackout = false;
+      this.play('sfx-power-restore', { volume: 0.8 });
+      this.humTo(0);
     });
     e.on('blackout-ended', () => {
       this.blackout = false;
-      this.play('sfx-mech-on', { volume: 0.6 });
+      this.humTo(0);
     });
+    // Future hooks.
+    e.on('pickup-collected', () => this.play('sfx-pickup'));
   }
 
   private destroy(): void {
@@ -237,5 +287,7 @@ export class AudioManager {
     this.music.destroy();
     for (const loop of this.loops) loop.sound.destroy();
     this.loops.length = 0;
+    this.hum?.sound.destroy();
+    this.hum = null;
   }
 }

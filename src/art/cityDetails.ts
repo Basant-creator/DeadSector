@@ -1,4 +1,4 @@
-import { INDUSTRIAL, SOLIDS, TILE, type TileRect } from '../world/cityMap';
+import { ALLEYS, DOWNTOWN, districtOfTile, INDUSTRIAL, SOLIDS, TILE, type TileRect } from '../world/cityMap';
 import { WORLD_ART_SCALE } from './layers';
 import { PALETTE } from './palette';
 import { type PixelArt, shade } from './pixels';
@@ -12,35 +12,44 @@ const T = TILE / WORLD_ART_SCALE;
 
 /** Manholes and alley vents, in tiles: drawn on the ground, and steam rises from them. */
 export const VENTS: readonly (readonly [number, number])[] = [
-  [14, 31], [36, 27], [52, 31], [24, 2], [46, 56], [74, 20], [83, 34], [66, 52],
+  // Downtown.
+  [16, 20], [46, 15], [72, 18], [13, 29], [56, 21],
+  // Residential Block and the Narrow Alleys.
+  [14, 67], [36, 63], [52, 67], [24, 38], [46, 92], [74, 56], [83, 70], [66, 88],
   // Industrial Facility.
-  [56, 62], [26, 69], [74, 80],
+  [56, 98], [26, 105], [74, 116],
 ];
 
 /** Landmarks: things to steer by, each tied to the solid it sits on or the ground it marks. */
 export const LANDMARKS = {
   /** A cyan clinic cross on the roof of the Shotgun locker's building, by the spawn. */
-  clinic: { rect: [36, 15, 6, 9] as TileRect },
+  clinic: { rect: [36, 51, 6, 9] as TileRect },
   /** A water tower on the long row house, north of the main street. */
-  waterTower: { rect: [28, 6, 14, 6] as TileRect },
+  waterTower: { rect: [28, 42, 14, 6] as TileRect },
   /** A crashed helicopter on the long building south of the main street. */
-  helicopter: { rect: [28, 46, 14, 7] as TileRect },
+  helicopter: { rect: [28, 82, 14, 7] as TileRect },
   /** A magenta MOTEL sign on the alley block above the Rifle locker. */
-  motel: { rect: [76, 13, 6, 15] as TileRect },
+  motel: { rect: [76, 49, 6, 15] as TileRect },
   /** A police cruiser left on the avenue south of the spawn, lights still going. */
-  policeCar: { rect: [45, 40, 2, 4] as TileRect },
+  policeCar: { rect: [45, 76, 2, 4] as TileRect },
   /** A burned-out car next to a blast crater on the main street. */
-  burnedCar: { rect: [10, 27, 4, 2] as TileRect },
+  burnedCar: { rect: [10, 63, 4, 2] as TileRect },
   /** Where something blew a hole in the main street: flat, walkable ground. */
-  crater: { tile: [15, 29] as const },
+  crater: { tile: [15, 65] as const },
+  /** The cinema over Downtown's plaza, its marquee still lit. */
+  cinema: { rect: [21, 1, 22, 5] as TileRect },
+  /** A statue on a plinth in the middle of the plaza: something to circle. */
+  monument: { rect: [33, 16, 4, 4] as TileRect },
+  /** A bus burned out across the boulevard, still smouldering. */
+  burnedBus: { rect: [13, 16, 7, 2] as TileRect },
 };
 
 const sameRect = (a: TileRect, b: TileRect) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 /** Index into SOLIDS of the solid with rectangle *rect*. */
 export const solidIndexOf = (rect: TileRect) => SOLIDS.findIndex((s) => sameRect(s.rect, rect));
 
-/** Buildings whose bottom edge faces the main street (row 24): they get storefronts. */
-const STOREFRONT_ROW = 24;
+/** Buildings whose bottom edge faces the main street (row 60) get storefronts, as does all of Downtown. */
+const STOREFRONT_ROW = 60;
 
 /** A building's visible front: its bottom band, inside its rectangle, seen in 3/4 view. */
 export function drawFacade(a: PixelArt, rect: TileRect, rand: () => number): void {
@@ -50,8 +59,9 @@ export function drawFacade(a: PixelArt, rect: TileRect, rand: () => number): voi
   const pw = w * T;
   const bottom = y + h * T;
   const yard = r >= INDUSTRIAL.area[1];
-  const alley = !yard && c >= 65;
-  const store = !alley && !yard && r + h === STOREFRONT_ROW;
+  const alley = districtOfTile(c, r) === ALLEYS;
+  const downtown = districtOfTile(c, r) === DOWNTOWN;
+  const store = downtown || (!alley && !yard && r + h === STOREFRONT_ROW);
   const depth = store || yard ? 8 : 6;
   const top = bottom - depth;
   if (yard) {
@@ -79,6 +89,7 @@ export function drawFacade(a: PixelArt, rect: TileRect, rand: () => number): voi
       if (!lit && rand() < 0.5) a.px(i + 1, top + 4, 0x4a6a78); // cracked glass
     }
     a.rect(x + pw - 8, top + 3, 3, 4, 0x1a1414);
+    if (downtown) damageStorefront(a, x, top, pw, bottom, rand);
     return;
   }
   // Rows of small windows: mostly dark, some boarded, a rare one lit.
@@ -95,6 +106,35 @@ export function drawFacade(a: PixelArt, rect: TileRect, rand: () => number): voi
       const gx = x + 4 + Math.floor(rand() * Math.max(1, pw - 16));
       for (let i = 0; i < 8; i++) a.px(gx + i, top + 2 + Math.round(Math.sin(i * 1.3) * 1.2), tag);
     }
+  }
+}
+
+/**
+ * Downtown was looted and burned: smashed and boarded windows, scorch climbing the wall, a torn
+ * awning. Drawn over a storefront, inside its band.
+ */
+function damageStorefront(a: PixelArt, x: number, top: number, pw: number, bottom: number, rand: () => number): void {
+  for (let i = x + 4; i < x + pw - 10; i += 7) {
+    const roll = rand();
+    if (roll < 0.3) {
+      // Smashed: dark, glass on the sill.
+      a.rect(i, top + 4, 5, 2, 0x0c0e12);
+      a.px(i + rand() * 5, top + 6, 0x4a6a78);
+    } else if (roll < 0.5) {
+      // Boarded over.
+      a.rect(i - 1, top + 3, 7, 4, 0x4a3422);
+      a.rect(i - 1, top + 4, 7, 1, 0x3a2818);
+    }
+  }
+  if (rand() < 0.5) {
+    // Soot from a fire, blackening the wall above a doorway.
+    const sx = x + 4 + rand() * Math.max(1, pw - 16);
+    for (let k = 0; k < 18; k++) a.px(sx + rand() * 8, top + rand() * (bottom - top - 1), 0x0e0d0e, 170);
+  }
+  if (rand() < 0.4) {
+    // A torn length of awning.
+    const tx = x + 3 + Math.floor(rand() * Math.max(1, pw - 12));
+    a.rect(tx, top + 1, 6, 2, 0x161418);
   }
 }
 
@@ -182,6 +222,7 @@ export function drawCrater(a: PixelArt, rand: () => number): void {
 /** A 3 x 5 pixel font for the few words drawn into the world. */
 const GLYPHS: Record<string, string> = {
   M: '101111101101101', O: '111101101101111', T: '111010010010010', E: '111100110100111', L: '100100100100111',
+  C: '111100100100111', I: '111010010010111', N: '111101101101101', A: '010101111101101',
 };
 
 export function drawWord(a: PixelArt, word: string, x: number, y: number, color: number): void {
@@ -240,5 +281,20 @@ export function drawLandmarks(a: PixelArt, rand: () => number): void {
     a.rect(bx, by, 24, 1, PALETTE.magenta);
     a.rect(bx, by + 10, 24, 1, PALETTE.magenta);
     drawWord(a, 'MOTEL', bx + 3, by + 3, PALETTE.magenta);
+  }
+  // Cinema: a marquee over the plaza, CINEMA in amber bulbs between magenta tubes, a few bulbs out.
+  {
+    const r = at(LANDMARKS.cinema.rect);
+    const bx = r.x + r.w / 2 - 17;
+    const by = r.y + r.h - 26;
+    a.rect(bx + 1, by + 1, 34, 13, PALETTE.shadow, 120);
+    a.rect(bx, by, 34, 13, 0x1a141c);
+    a.rect(bx, by, 34, 1, PALETTE.magenta);
+    a.rect(bx, by + 12, 34, 1, PALETTE.magenta);
+    for (let k = 1; k < 34; k += 3) {
+      a.px(bx + k, by + 2, rand() < 0.2 ? 0x3a2a1a : PALETTE.amber);
+      a.px(bx + k, by + 10, rand() < 0.2 ? 0x3a2a1a : PALETTE.amber);
+    }
+    drawWord(a, 'CINEMA', bx + 5, by + 4, PALETTE.amber);
   }
 }

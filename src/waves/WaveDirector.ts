@@ -16,6 +16,12 @@ export const WAVE_TUNING = {
   minSpawnDistance: 400,
   /** ...nor one within this many px of the camera's view, so nothing appears on screen. */
   offscreenMargin: 64,
+  /**
+   * Among the safe points, those within this many px are preferred; the farther ones are used
+   * only when none is this close. Keeps the walk to the player about as long as it was before
+   * Downtown made the open city 70% larger (mean path 1740 px then, 1675 now; 2114 without it).
+   */
+  preferredSpawnDistance: 2000,
   /** ...nor one a living enemy still stands on. Two Brute bodies span 40 px. */
   spawnClearance: 48,
   /** A Giant (26 px) arrives at least this far from any living enemy. */
@@ -219,7 +225,9 @@ export class WaveDirector {
         canSpawnAt(p) &&
         living.every((e) => Phaser.Math.Distance.BetweenPoints(p, e) >= clearance),
     );
-    return safe.length > 0 ? Phaser.Utils.Array.GetRandom(safe) : undefined;
+    const near = safe.filter((p) => Phaser.Math.Distance.BetweenPoints(p, player) <= WAVE_TUNING.preferredSpawnDistance);
+    const pool = near.length > 0 ? near : safe;
+    return pool.length > 0 ? Phaser.Utils.Array.GetRandom(pool) : undefined;
   }
 
   private onEnemyDied(enemy: Enemy): void {

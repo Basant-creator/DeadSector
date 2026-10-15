@@ -4,6 +4,7 @@ import type { Enemy } from '../entities/Enemy';
 import type { EnemyKind } from '../entities/enemies';
 import type { AttackPhase, GiantAttackKind } from '../entities/giantRules';
 import type { MechState } from '../entities/Mech';
+import type { BlackoutScope } from '../blackout/blackoutRules';
 import type { RunOutcome } from '../run/Run';
 
 /**
@@ -11,8 +12,8 @@ import type { RunOutcome } from '../run/Run';
  * (audio now; anything later) listens here instead of being called from gameplay classes, so
  * gameplay never knows what a sound or a song is.
  *
- * Events marked "future" have no sender yet: they are the hooks for power-ups, allies, blackouts
- * and an endless wave director. Listeners may subscribe to them today.
+ * Events marked "future" have no sender yet: they are the hooks for power-ups, allies and an
+ * endless wave director. Listeners may subscribe to them today.
  */
 export interface GameEventMap {
   /** A gun fired one shot (a shotgun blast is one shot). (x, y) is the muzzle. */
@@ -49,13 +50,18 @@ export interface GameEventMap {
   'mech-hit': { amount: number; heavy: boolean; health: number };
   'mech-stomp': { x: number; y: number; hits: number };
   'run-ended': { outcome: RunOutcome };
+  /**
+   * A blackout, in order: the failing lights start to flicker; they go out; they start coming
+   * back; the power is fully on again. *district* is the district hit, null when citywide.
+   */
+  'blackout-warning': { scope: BlackoutScope; district: string | null; outMs: number };
+  'blackout-started': { scope: BlackoutScope; district: string | null };
+  'blackout-restoring': Record<string, never>;
+  'blackout-ended': Record<string, never>;
 
   // Future hooks: nothing sends these yet.
   /** A power-up or other pickup was collected. */
   'pickup-collected': { kind: string; x: number; y: number };
-  /** The lights went out, and came back. */
-  'blackout-started': Record<string, never>;
-  'blackout-ended': Record<string, never>;
   /** A temporary ally joined or left the fight. */
   'ally-joined': { kind: string };
   'ally-left': { kind: string };

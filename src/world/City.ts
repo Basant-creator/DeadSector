@@ -34,11 +34,13 @@ export class City {
   readonly mechBay: MechBay;
   /** The light pools in the scene, for `Ambience` to animate. */
   readonly lights: readonly LightSprite[];
+  /** Cables and lamp heads, drawn over the actors (and over a blackout's darkness). */
+  readonly foreground: Phaser.GameObjects.Image;
   /** Per tile: the index into SOLIDS of the solid covering it, GATE_TILE, or -1 for open ground. */
   private readonly solidTiles = new Int16Array(MAP_COLS * MAP_ROWS).fill(-1);
 
   constructor(scene: Phaser.Scene) {
-    this.lights = renderCity(scene);
+    ({ lights: this.lights, foreground: this.foreground } = renderCity(scene));
 
     this.walls = scene.physics.add.staticGroup();
     this.nav = new NavGrid(MAP_COLS, MAP_ROWS, TILE);
